@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OutsideFundingRetained, VariableCostItem } from "@revenue-reality/domain";
-import { validateFundingModeExclusivity, validateVariableCostModeExclusivity } from "./mode-exclusivity.js";
-import { ValidationError } from "./errors.js";
+import { validateFundingModeExclusivity, validateVariableCostModeExclusivity } from "./mode-exclusivity";
+import { ValidationError } from "./errors";
 
 describe("validateFundingModeExclusivity", () => {
   it("accepts AMOUNT mode with only amount set", () => {

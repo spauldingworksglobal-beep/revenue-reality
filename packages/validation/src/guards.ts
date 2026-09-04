@@ -1,5 +1,5 @@
 import type { Money } from "@revenue-reality/domain";
-import { ValidationError } from "./errors.js";
+import { ValidationError } from "./errors";
 
 export function guardPositiveAmount(amount: Money, field = "amount"): void {
   if (Number(amount) <= 0 || Number.isNaN(Number(amount))) {

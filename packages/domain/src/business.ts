@@ -4,7 +4,7 @@ import type {
   ID,
   ISODate,
   OwnershipIntent,
-} from "./primitives.js";
+} from "./primitives";
 
 export interface Business {
   id: ID;

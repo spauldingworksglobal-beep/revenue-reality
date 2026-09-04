@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { guardNonNegativeAmount, guardPositiveAmount, guardSellableUnitsPositive } from "./guards.js";
-import { ValidationError } from "./errors.js";
+import { guardNonNegativeAmount, guardPositiveAmount, guardSellableUnitsPositive } from "./guards";
+import { ValidationError } from "./errors";
 
 describe("guardSellableUnitsPositive", () => {
   it("accepts a positive count", () => {

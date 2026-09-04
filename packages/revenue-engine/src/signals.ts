@@ -1,5 +1,5 @@
 import type { Capacity, CapacitySignal, OwnerSupportSignal, ScenarioTimeAssumption, TimeSignal } from "@revenue-reality/domain";
-import { type Dec, subtract } from "./money.js";
+import { type Dec, subtract } from "./money";
 
 /**
  * Derived from primaryOwnerBenefitVsRequirement, never from revenue or

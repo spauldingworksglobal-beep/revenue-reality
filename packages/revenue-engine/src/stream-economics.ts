@@ -1,6 +1,6 @@
 import type { ID, ScenarioRevenueStream } from "@revenue-reality/domain";
-import { resolveCogsPerUnit, resolveOtherVariableCostPerUnit } from "./cogs.js";
-import { type Dec, add, divide, multiply, parseMoney, parsePercent, subtract } from "./money.js";
+import { resolveCogsPerUnit, resolveOtherVariableCostPerUnit } from "./cogs";
+import { type Dec, add, divide, multiply, parseMoney, parsePercent, subtract } from "./money";
 
 export interface StreamEconomics {
   streamId: ID;

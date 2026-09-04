@@ -1,17 +1,17 @@
-import type { ID, ISODate, Money, ScenarioType } from "./primitives.js";
-import type { ScenarioLifeAssumption, ScenarioTimeAssumption } from "./scenario-assumptions.js";
+import type { ID, ISODate, Money, ScenarioType } from "./primitives";
+import type { ScenarioLifeAssumption, ScenarioTimeAssumption } from "./scenario-assumptions";
 import type {
   Capacity,
   CapitalRequirementItem,
   OperatingCost,
   ScenarioRevenueStream,
-} from "./scenario-economics.js";
+} from "./scenario-economics";
 import type {
   DelegationItem,
   OwnerEconomics,
   OwnerInput,
   ScenarioDistributionPolicy,
-} from "./ownership.js";
+} from "./ownership";
 
 /** Persisted shape — one row per NOW / NEXT / ULTIMATELY, shared structure. */
 export interface Scenario {

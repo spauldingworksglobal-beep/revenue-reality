@@ -1,6 +1,6 @@
 import type { ScenarioRevenueStream } from "@revenue-reality/domain";
-import { ValidationError } from "./errors.js";
-import { sumDecimalStringsExact, decimalStringToScaled } from "./decimal-sum.js";
+import { ValidationError } from "./errors";
+import { sumDecimalStringsExact, decimalStringToScaled } from "./decimal-sum";
 
 const ONE_HUNDRED_PERCENT = decimalStringToScaled("1");
 

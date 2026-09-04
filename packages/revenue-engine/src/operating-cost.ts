@@ -1,6 +1,6 @@
 import type { OperatingCost } from "@revenue-reality/domain";
-import { normalizeCadence } from "./cadence.js";
-import { type Dec, add, parseMoney } from "./money.js";
+import { normalizeCadence } from "./cadence";
+import { type Dec, add, parseMoney } from "./money";
 
 export interface KnownOperatingCostResult {
   monthly: Dec; // recurring only — ONE_TIME costs are excluded, see cadence.ts

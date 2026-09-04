@@ -1,6 +1,6 @@
 import type { CogsInput, VariableCostItem } from "@revenue-reality/domain";
 import { guardSellableUnitsPositive } from "@revenue-reality/validation";
-import { type Dec, add, dec, divide, parseMoney, parsePercent, multiply } from "./money.js";
+import { type Dec, add, dec, divide, parseMoney, parsePercent, multiply } from "./money";
 
 /**
  * Resolves any of the four COGS entry paths (Build Spec §06/§08) down to a

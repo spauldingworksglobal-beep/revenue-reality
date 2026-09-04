@@ -1,5 +1,5 @@
 import type { DistributionRule, OwnerEconomics, ScenarioDistributionPolicy } from "@revenue-reality/domain";
-import { type Dec, ZERO, dec, divide, parseMoney } from "./money.js";
+import { type Dec, ZERO, dec, divide, parseMoney } from "./money";
 
 export interface OwnerCashComponents {
   /** Feeds the waterfall's "Σ owner labor comp" deduction directly. */

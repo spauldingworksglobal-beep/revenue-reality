@@ -1,5 +1,5 @@
 import type { OutsideFundingRetained, VariableCostItem } from "@revenue-reality/domain";
-import { ValidationError } from "./errors.js";
+import { ValidationError } from "./errors";
 
 /** Mirrors the scenario_life_assumption CHECK constraint: amount/percent are alternate modes, never both. */
 export function validateFundingModeExclusivity(retained: OutsideFundingRetained): void {

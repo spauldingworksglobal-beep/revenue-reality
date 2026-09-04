@@ -4,9 +4,9 @@ import {
   validateMixWeightsSum100,
   validateOwnershipPercentagesSum100,
 } from "@revenue-reality/validation";
-import { collectInputConfidenceFlags } from "./collect-confidence.js";
-import { assembleConfidenceFlags } from "./confidence.js";
-import { sumRequiredRetainedBusinessCapital } from "./capital.js";
+import { collectInputConfidenceFlags } from "./collect-confidence";
+import { assembleConfidenceFlags } from "./confidence";
+import { sumRequiredRetainedBusinessCapital } from "./capital";
 import {
   computeContributionEconomics,
   computeDistributableEconomicSurplus,
@@ -14,14 +14,14 @@ import {
   computeOwnerProfitDistribution,
   computeTotalOwnerEconomicBenefit,
   solveRequiredRevenueFromOwnerTarget,
-} from "./distribution.js";
-import { resolveBusinessFundedRequirement } from "./funding.js";
-import { type Dec, ZERO, add, divide, formatMoney, formatPercent, parseMoney, subtract } from "./money.js";
-import { sumKnownOperatingCost } from "./operating-cost.js";
-import { resolveOwnerCashComponents, resolveDistributionPercent } from "./owner-economics.js";
-import { computeBreakEvenFloor, computeRequiredVolume } from "./revenue.js";
-import { computeCapacitySignal, computeOwnerSupportSignal, computeTimeSignal } from "./signals.js";
-import { computeWeightedContributionMargin, resolveStreamEconomics } from "./stream-economics.js";
+} from "./distribution";
+import { resolveBusinessFundedRequirement } from "./funding";
+import { type Dec, ZERO, add, divide, formatMoney, formatPercent, parseMoney, subtract } from "./money";
+import { sumKnownOperatingCost } from "./operating-cost";
+import { resolveOwnerCashComponents, resolveDistributionPercent } from "./owner-economics";
+import { computeBreakEvenFloor, computeRequiredVolume } from "./revenue";
+import { computeCapacitySignal, computeOwnerSupportSignal, computeTimeSignal } from "./signals";
+import { computeWeightedContributionMargin, resolveStreamEconomics } from "./stream-economics";
 
 export const FORMULA_VERSION = "2026.1.0";
 

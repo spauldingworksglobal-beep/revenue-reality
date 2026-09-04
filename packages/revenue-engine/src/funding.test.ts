@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ScenarioLifeAssumption } from "@revenue-reality/domain";
-import { resolveBusinessFundedRequirement } from "./funding.js";
-import { formatMoney } from "./money.js";
+import { resolveBusinessFundedRequirement } from "./funding";
+import { formatMoney } from "./money";
 
 function lifeAssumption(overrides: Partial<ScenarioLifeAssumption> = {}): ScenarioLifeAssumption {
   return {

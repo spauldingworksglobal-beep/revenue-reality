@@ -3,8 +3,8 @@ import type { OwnerEconomics, ScenarioDistributionPolicy } from "@revenue-realit
 import {
   validateDistributionPercentagesSum100,
   validateOwnershipPercentagesSum100,
-} from "./percentage-validators.js";
-import { ValidationError } from "./errors.js";
+} from "./percentage-validators";
+import { ValidationError } from "./errors";
 
 function owner(overrides: Partial<OwnerEconomics>): OwnerEconomics {
   return {

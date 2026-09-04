@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background-color: #faf9f6;
+  color: #1f2420;
+}
+
+/* Visible focus ring everywhere — never hover-only, never invisible on keyboard nav */
+:focus-visible {
+  outline: 3px solid #2c5f4f;
+  outline-offset: 2px;
+}
+
+input,
+select,
+textarea,
+button {
+  font-size: 16px; /* avoids iOS zoom-on-focus */
+}

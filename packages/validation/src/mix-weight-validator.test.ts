@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ScenarioRevenueStream } from "@revenue-reality/domain";
-import { validateMixWeightsSum100 } from "./mix-weight-validator.js";
-import { ValidationError } from "./errors.js";
+import { validateMixWeightsSum100 } from "./mix-weight-validator";
+import { ValidationError } from "./errors";
 
 function stream(mixWeight: string): ScenarioRevenueStream {
   return {

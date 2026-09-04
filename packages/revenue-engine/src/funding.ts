@@ -1,10 +1,30 @@
-import type { ScenarioLifeAssumption } from "@revenue-reality/domain";
+import type { OutsideFundingRetained, ScenarioLifeAssumption } from "@revenue-reality/domain";
 import { validateFundingModeExclusivity } from "@revenue-reality/validation";
-import { type Dec, add, multiply, parseMoney, parsePercent, subtract } from "./money.js";
+import { type Dec, add, multiply, parseMoney, parsePercent, subtract } from "./money";
 
 export interface FundingResolution {
   totalPersonalEconomicRequirement: Dec; // lifeRequirement + securityRequirement — the ONLY figure consumed onward
   businessFundedRequirement: Dec; // totalPersonalEconomicRequirement − outsideFundingRetained, ONE calculation
+}
+
+/**
+ * The retained-amount half of the one funding-responsibility calculation —
+ * usable on its own at Life Reality intake time (Milestone 2), before a
+ * Scenario/ScenarioLifeAssumption exists at all.
+ */
+export function resolveOutsideFundingRetainedAmount(
+  totalPersonalEconomicRequirement: Dec,
+  retained: OutsideFundingRetained,
+): Dec {
+  validateFundingModeExclusivity(retained);
+  return retained.mode === "AMOUNT"
+    ? parseMoney(retained.amount!)
+    : multiply(totalPersonalEconomicRequirement, parsePercent(retained.percentOfTotal!));
+}
+
+/** businessFundedRequirement = totalPersonalEconomicRequirement − outsideFundingRetained. */
+export function resolveBusinessFundedAmount(totalPersonalEconomicRequirement: Dec, retained: OutsideFundingRetained): Dec {
+  return subtract(totalPersonalEconomicRequirement, resolveOutsideFundingRetainedAmount(totalPersonalEconomicRequirement, retained));
 }
 
 /**
@@ -13,16 +33,7 @@ export interface FundingResolution {
  * it's computed, so it can't drift.
  */
 export function resolveBusinessFundedRequirement(life: ScenarioLifeAssumption): FundingResolution {
-  validateFundingModeExclusivity(life.outsideFundingRetained);
-
   const totalPersonalEconomicRequirement = add(parseMoney(life.lifeRequirement), parseMoney(life.securityRequirement));
-
-  const retained =
-    life.outsideFundingRetained.mode === "AMOUNT"
-      ? parseMoney(life.outsideFundingRetained.amount!)
-      : multiply(totalPersonalEconomicRequirement, parsePercent(life.outsideFundingRetained.percentOfTotal!));
-
-  const businessFundedRequirement = subtract(totalPersonalEconomicRequirement, retained);
-
+  const businessFundedRequirement = resolveBusinessFundedAmount(totalPersonalEconomicRequirement, life.outsideFundingRetained);
   return { totalPersonalEconomicRequirement, businessFundedRequirement };
 }

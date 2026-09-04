@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { allocateRevenueToStreamUnits, computeBreakEvenFloor } from "./revenue.js";
-import type { StreamEconomics } from "./stream-economics.js";
-import { dec } from "./money.js";
+import { allocateRevenueToStreamUnits, computeBreakEvenFloor } from "./revenue";
+import type { StreamEconomics } from "./stream-economics";
+import { dec } from "./money";
 
 function stream(overrides: Partial<StreamEconomics>): StreamEconomics {
   return {

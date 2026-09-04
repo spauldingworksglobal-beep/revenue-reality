@@ -1,4 +1,4 @@
-import type { Cadence, ChangeType, ConfidenceValue, ID, Money } from "./primitives.js";
+import type { Cadence, ChangeType, ConfidenceValue, ID, Money } from "./primitives";
 
 /**
  * Disjoint by construction. DEBT_PAYMENT (life category) is required minimum

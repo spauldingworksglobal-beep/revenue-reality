@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CogsInput } from "@revenue-reality/domain";
 import { ValidationError } from "@revenue-reality/validation";
-import { resolveCogsPerUnit, resolveOtherVariableCostPerUnit } from "./cogs.js";
-import { dec, formatMoney } from "./money.js";
+import { resolveCogsPerUnit, resolveOtherVariableCostPerUnit } from "./cogs";
+import { dec, formatMoney } from "./money";
 
 describe("resolveCogsPerUnit", () => {
   it("PER_BATCH: $1,000 batch cost / 400 sellable units = $2.50/unit", () => {

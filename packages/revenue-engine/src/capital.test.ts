@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CapitalRequirementItem } from "@revenue-reality/domain";
-import { sumRequiredRetainedBusinessCapital } from "./capital.js";
-import { formatMoney } from "./money.js";
+import { sumRequiredRetainedBusinessCapital } from "./capital";
+import { formatMoney } from "./money";
 
 function item(overrides: Partial<CapitalRequirementItem>): CapitalRequirementItem {
   return {

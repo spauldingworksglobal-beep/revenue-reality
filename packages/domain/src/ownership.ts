@@ -1,4 +1,4 @@
-import type { Cadence, ConfidenceValue, DelegationType, ID, Money, Percent } from "./primitives.js";
+import type { Cadence, ConfidenceValue, DelegationType, ID, Money, Percent } from "./primitives";
 
 export type DistributionRule =
   | "SAME_AS_OWNERSHIP"

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Capacity, ScenarioTimeAssumption } from "@revenue-reality/domain";
-import { computeCapacitySignal, computeOwnerSupportSignal, computeTimeSignal } from "./signals.js";
-import { dec } from "./money.js";
+import { computeCapacitySignal, computeOwnerSupportSignal, computeTimeSignal } from "./signals";
+import { dec } from "./money";
 
 describe("computeOwnerSupportSignal", () => {
   it("benefit meeting or exceeding requirement ⇒ BUSINESS_SUPPORTS_OWNER", () => {

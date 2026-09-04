@@ -7,7 +7,7 @@ import type {
   ID,
   Money,
   Percent,
-} from "./primitives.js";
+} from "./primitives";
 
 export interface CogsInput {
   method: CogsMethod;

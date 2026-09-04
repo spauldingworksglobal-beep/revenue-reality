@@ -6,7 +6,7 @@ import type {
   LifeSource,
   Money,
   Percent,
-} from "./primitives.js";
+} from "./primitives";
 
 export interface OutsideFundingRetained {
   mode: FundingInputMode;

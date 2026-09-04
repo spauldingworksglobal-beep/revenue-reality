@@ -1,4 +1,4 @@
-import type { ConfidenceLevel, ID, ISODate, Money, Percent } from "./primitives.js";
+import type { ConfidenceLevel, ID, ISODate, Money, Percent } from "./primitives";
 
 export type OwnerSupportSignal =
   | "BUSINESS_SUPPORTS_OWNER"

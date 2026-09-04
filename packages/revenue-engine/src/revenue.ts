@@ -1,6 +1,6 @@
 import type { ID } from "@revenue-reality/domain";
-import type { StreamEconomics } from "./stream-economics.js";
-import { type Dec, divide, multiply } from "./money.js";
+import type { StreamEconomics } from "./stream-economics";
+import { type Dec, divide, multiply } from "./money";
 
 export interface StreamVolume {
   streamId: ID;

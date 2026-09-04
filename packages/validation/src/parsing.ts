@@ -1,5 +1,5 @@
 import type { Money, Percent } from "@revenue-reality/domain";
-import { ValidationError } from "./errors.js";
+import { ValidationError } from "./errors";
 
 const CURRENCY_PATTERN = /^-?\d{1,3}(?:,\d{3})*(?:\.\d+)?$|^-?\d+(?:\.\d+)?$/;
 

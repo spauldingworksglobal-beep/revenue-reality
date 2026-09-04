@@ -1,5 +1,5 @@
 import type { Cadence } from "@revenue-reality/domain";
-import { type Dec, ZERO, dec, divide, multiply, parseMoney } from "./money.js";
+import { type Dec, ZERO, dec, divide, multiply, parseMoney } from "./money";
 
 const WEEKS_PER_MONTH = divide(dec(52), dec(12));
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { hcfNowInput } from "./fixtures/hcf.js";
-import { runScenario } from "./scenario.js";
+import { hcfNowInput } from "./fixtures/hcf";
+import { runScenario } from "./scenario";
 
 describe("runScenario — HCF acceptance fixture (Build Spec §20)", () => {
   const result = runScenario(hcfNowInput(), { revisionId: "rev-1", computedAt: "2026-09-04T00:00:00.000Z" });

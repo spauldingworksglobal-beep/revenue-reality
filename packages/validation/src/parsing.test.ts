@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseCurrencyInput, parsePercentInput } from "./parsing.js";
-import { ValidationError } from "./errors.js";
+import { parseCurrencyInput, parsePercentInput } from "./parsing";
+import { ValidationError } from "./errors";
 
 describe("parseCurrencyInput", () => {
   it("normalizes a plain integer", () => {

@@ -1,4 +1,4 @@
-import { type Dec, ZERO, add, divide, max, multiply, subtract } from "./money.js";
+import { type Dec, ZERO, add, divide, max, multiply, subtract } from "./money";
 
 export function computeContributionEconomics(revenue: Dec, weightedContributionMargin: Dec): Dec {
   return multiply(revenue, weightedContributionMargin);

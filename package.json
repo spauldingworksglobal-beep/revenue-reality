@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "Revenue Reality — Spaulding Works / Works Tools",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "test": "vitest run",

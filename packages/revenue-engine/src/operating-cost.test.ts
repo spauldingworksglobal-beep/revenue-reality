@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OperatingCost } from "@revenue-reality/domain";
-import { sumKnownOperatingCost } from "./operating-cost.js";
-import { formatMoney } from "./money.js";
+import { sumKnownOperatingCost } from "./operating-cost";
+import { formatMoney } from "./money";
 
 function cost(overrides: Partial<OperatingCost>): OperatingCost {
   return {

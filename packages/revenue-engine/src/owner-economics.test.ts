@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OwnerEconomics, ScenarioDistributionPolicy } from "@revenue-reality/domain";
-import { resolveDistributionPercent, resolveOwnerCashComponents } from "./owner-economics.js";
-import { formatMoney, formatPercent } from "./money.js";
+import { resolveDistributionPercent, resolveOwnerCashComponents } from "./owner-economics";
+import { formatMoney, formatPercent } from "./money";
 
 function owner(overrides: Partial<OwnerEconomics>): OwnerEconomics {
   return {

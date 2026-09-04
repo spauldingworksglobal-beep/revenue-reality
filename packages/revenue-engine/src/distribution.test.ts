@@ -7,8 +7,8 @@ import {
   computeTotalOwnerEconomicBenefit,
   solveRequiredDistributableSurplus,
   solveRequiredRevenueFromOwnerTarget,
-} from "./distribution.js";
-import { dec, formatMoney, ZERO } from "./money.js";
+} from "./distribution";
+import { dec, formatMoney, ZERO } from "./money";
 
 describe("forward waterfall", () => {
   it("computeContributionEconomics: revenue × weighted contribution margin", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ScenarioRevenueStream } from "@revenue-reality/domain";
-import { resolveStreamEconomics, computeWeightedContributionMargin } from "./stream-economics.js";
-import { formatMoney, formatPercent } from "./money.js";
+import { resolveStreamEconomics, computeWeightedContributionMargin } from "./stream-economics";
+import { formatMoney, formatPercent } from "./money";
 
 function hcfBarStream(overrides: Partial<ScenarioRevenueStream> = {}): ScenarioRevenueStream {
   return {
