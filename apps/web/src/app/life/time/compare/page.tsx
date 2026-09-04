@@ -74,7 +74,8 @@ export default function TimeComparePage() {
       eyebrow="Time Reality · Comparison"
       title="Here is the time reality you described. Does this reflect now and what you're building toward?"
       backHref="/life/time/intended"
-      nextHref={undefined}
+      nextHref="/business"
+      nextLabel="Now, the business"
     >
       <HorizonCard title="Current" summary={comparison.current} message={fitMessage(comparison.current, "Right now,")} />
       <HorizonCard title="Intended" summary={comparison.intended} message={fitMessage(comparison.intended, "In the life you're building,")} />
@@ -117,7 +118,7 @@ export default function TimeComparePage() {
       )}
 
       <p className="rounded-md bg-ink/5 px-4 py-3 text-sm text-ink/70">
-        Milestone 3 ends here. Next, Revenue Reality introduces the business.
+        Time Reality is complete. Next, Revenue Reality introduces the business.
       </p>
     </WizardShell>
   );

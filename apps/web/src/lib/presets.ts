@@ -1,4 +1,4 @@
-import type { LifeCategoryKind, SecurityItemKind } from "@revenue-reality/domain";
+import type { Business, BusinessModelType, BusinessStage, OwnershipIntent, LifeCategoryKind, SecurityItemKind } from "@revenue-reality/domain";
 
 /**
  * Guided category prompts (Method v1.4 §02 / Build Spec §04, Life 1 & 3).
@@ -94,3 +94,42 @@ export const LIFE_PRIORITY_OPTIONS = [
   "Community",
   "Travel",
 ] as const;
+
+/**
+ * Business Profile presets. Plain-language prompt first; the professional
+ * term is taught alongside it, never required to answer, never hidden.
+ */
+export const BUSINESS_MODEL_OPTIONS: { value: BusinessModelType; label: string; hint: string }[] = [
+  { value: "PRODUCT", label: "I make or source physical products", hint: "Revenue Reality calls this a Product model." },
+  { value: "SERVICE", label: "I do work or provide a service for people", hint: "Revenue Reality calls this a Service model." },
+  { value: "RETAIL_HOSPITALITY", label: "I run a storefront, restaurant, or similar space", hint: "Revenue Reality calls this Retail / Hospitality." },
+  { value: "SUBSCRIPTION", label: "People pay me on an ongoing, recurring basis", hint: "Revenue Reality calls this a Subscription model." },
+  { value: "PROJECT_CONTRACT", label: "I take on discrete projects or contracts", hint: "Revenue Reality calls this Project / Contract." },
+  { value: "MIXED", label: "It's a mix of more than one of these", hint: "Revenue Reality calls this a Mixed model." },
+];
+
+export const BUSINESS_STAGE_OPTIONS: { value: BusinessStage; label: string }[] = [
+  { value: "ESTABLISHED", label: "Established — running steadily" },
+  { value: "NEW", label: "New — just getting started" },
+  { value: "SEASONAL", label: "Seasonal" },
+  { value: "RESTARTED", label: "Restarted after a pause" },
+  { value: "RESTRUCTURED", label: "Recently restructured or materially changed" },
+];
+
+export const FUNDING_JOB_OPTIONS: { value: Business["fundingJob"]; label: string }[] = [
+  { value: "SUPPLEMENT", label: "Supplement other income" },
+  { value: "REPLACE", label: "Replace another income source" },
+  { value: "PRIMARY", label: "Become my primary income" },
+  { value: "BUILD_WEALTH", label: "Build wealth" },
+  { value: "ASSET", label: "Become / operate as an asset" },
+  { value: "OTHER", label: "Other" },
+];
+
+export const OWNERSHIP_INTENT_OPTIONS: { value: OwnershipIntent; label: string }[] = [
+  { value: "MOSTLY_ME", label: "Mostly me" },
+  { value: "SMALL_TEAM", label: "A small team" },
+  { value: "COMPANY_I_LEAD", label: "A company I lead" },
+  { value: "RUNS_WITHOUT_ME", label: "Runs without me" },
+  { value: "ASSET", label: "An asset" },
+  { value: "UNSURE", label: "Unsure yet" },
+];

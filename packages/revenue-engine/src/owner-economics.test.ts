@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { OwnerEconomics, ScenarioDistributionPolicy } from "@revenue-reality/domain";
+import type { Owner, OwnerEconomics, ScenarioDistributionPolicy } from "@revenue-reality/domain";
 import { resolveDistributionPercent, resolveOwnerCashComponents } from "./owner-economics";
 import { formatMoney, formatPercent } from "./money";
 
@@ -39,6 +39,31 @@ describe("resolveDistributionPercent", () => {
     const a = owner({ ownerId: "a" });
     expect(resolveDistributionPercent(a, [a], { scenarioId: "s1", rule: "DISCRETIONARY" })).toBeNull();
     expect(resolveDistributionPercent(a, [a], { scenarioId: "s1", rule: "OTHER" })).toBeNull();
+  });
+});
+
+describe("Business Profile ownership never infers scenario-level distribution", () => {
+  it("Owner.ownershipPercent (business profile) has no bearing on OwnerEconomics.distributionPercent (scenario-level) — CUSTOM_PERCENTAGE still requires it independently", () => {
+    // A business-profile Owner record with a known, confirmed 50% legal ownership share.
+    const businessProfileOwner: Owner = {
+      id: "o1",
+      businessId: "b1",
+      label: "Jess",
+      isPrimaryRespondent: true,
+      ownershipPercent: { value: "0.5", confidence: "EXACT" },
+    };
+
+    // Building this owner's scenario-level economics from scratch: even carrying the
+    // SAME ownership assumption forward, distributionPercent is independently null
+    // until the owner confirms a distribution rule — nothing derives it automatically.
+    const scenarioOwner = owner({
+      ownerId: businessProfileOwner.id,
+      ownershipPercent: businessProfileOwner.ownershipPercent.value,
+      distributionPercent: null,
+    });
+    const policy: ScenarioDistributionPolicy = { scenarioId: "s1", rule: "CUSTOM_PERCENTAGE" };
+
+    expect(resolveDistributionPercent(scenarioOwner, [scenarioOwner], policy)).toBeNull();
   });
 });
 
