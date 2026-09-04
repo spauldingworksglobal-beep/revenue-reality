@@ -1,0 +1,19 @@
+{
+  "name": "revenue-reality",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Revenue Reality — Spaulding Works / Works Tools",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --build",
+    "build": "tsc --build"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
