@@ -135,6 +135,58 @@ describe("runScenario — retained capital is never treated as distributed", () 
   });
 });
 
+describe("runScenario — UNCLASSIFIED_TOTAL preserves known cash as owner benefit", () => {
+  // The backward solver may conservatively treat an unclassified owner's
+  // known labor compensation as $0 (it can't guess the split) — but that is
+  // an internal input to solving requiredRevenue only. It must never leak
+  // into totalOwnerEconomicBenefit or ownerSupportSignal, which have a real,
+  // known dollar figure to report and must report it in full.
+  function inputWithPrimaryUnclassifiedCash(amount: string) {
+    const input = hcfNowInput();
+    input.ownerEconomics = input.ownerEconomics.map((o) =>
+      o.isPrimaryRespondent
+        ? { ...o, cashReceived: { mode: "UNCLASSIFIED_TOTAL" as const, unclassifiedTotal: { value: amount, confidence: "INCOMPLETE" as const } } }
+        : o,
+    );
+    return input;
+  }
+
+  it("known cash received of $0 is reported as $0 benefit — a real measurement, not a fallback", () => {
+    // (This is the HCF fixture's own condition: owner-1 genuinely received nothing.)
+    const result = runScenario(inputWithPrimaryUnclassifiedCash("0.00"), { revisionId: "r" });
+    const primary = result.ownerEconomicsResults.find((o) => o.ownerId === "owner-1")!;
+    expect(primary.totalOwnerEconomicBenefit).toBe("0.00");
+    expect(result.primaryOwnerBenefitVsRequirement.totalOwnerEconomicBenefit).toBe("0.00");
+  });
+
+  it("a known unclassified cash amount is preserved in full as totalOwnerEconomicBenefit — never zeroed by classification uncertainty", () => {
+    // businessFundedRequirement for this fixture is $3,200 (see hcf.ts) — $5,000 known cash exceeds it.
+    const result = runScenario(inputWithPrimaryUnclassifiedCash("5000.00"), { revisionId: "r" });
+    const primary = result.ownerEconomicsResults.find((o) => o.ownerId === "owner-1")!;
+
+    expect(primary.totalOwnerEconomicBenefit).toBe("5000.00"); // NOT "0.00" — classification gap ≠ zero benefit
+    expect(primary.profitDistribution).toBe("0.00"); // the split is genuinely unknown, not fabricated as distribution either
+  });
+
+  it("ownerSupportSignal reflects the known total cash received, not the backward solver's internal $0 labor assumption", () => {
+    const result = runScenario(inputWithPrimaryUnclassifiedCash("5000.00"), { revisionId: "r" });
+
+    expect(result.primaryOwnerBenefitVsRequirement.businessFundedPersonalEconomicRequirement).toBe("3200.00");
+    expect(result.primaryOwnerBenefitVsRequirement.totalOwnerEconomicBenefit).toBe("5000.00");
+    expect(result.primaryOwnerBenefitVsRequirement.gap).toBe("1800.00"); // 5000 - 3200, positive — the business is supporting the owner
+    expect(result.ownerSupportSignal).toBe("BUSINESS_SUPPORTS_OWNER");
+  });
+
+  it("the requiredRevenue calculation still runs (the $0 conservative labor assumption is a real, disclosed input) and is unaffected by the reported benefit figure", () => {
+    // Same requiredRevenue whether the primary owner's known unclassified cash is $0 or $5,000 —
+    // proving the backward solver's requiredRevenue genuinely depends on the $0 labor-comp
+    // assumption alone, not on totalOwnerEconomicBenefit (which the two scenarios above show differ).
+    const zeroCash = runScenario(inputWithPrimaryUnclassifiedCash("0.00"), { revisionId: "r1" });
+    const fiveThousandCash = runScenario(inputWithPrimaryUnclassifiedCash("5000.00"), { revisionId: "r2" });
+    expect(zeroCash.requiredRevenue).toBe(fiveThousandCash.requiredRevenue);
+  });
+});
+
 describe("runScenario — DISCRETIONARY distribution without a manual target", () => {
   it("degrades gracefully: still returns a real (floor) requiredRevenue and flags the gap, never crashes", () => {
     const input = hcfNowInput();
