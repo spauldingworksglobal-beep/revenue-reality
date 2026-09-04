@@ -22,8 +22,15 @@ export default function IntendedLifePage() {
   const [newLabel, setNewLabel] = useState("");
   const [newAmountRaw, setNewAmountRaw] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  // Which button is visually selected, independent of whether a REDUCE/INCREASE
+  // has an amount committed yet. Without this, clicking Reduce/Increase on a
+  // category with no current amount had no fallback value to commit
+  // immediately — the amount field never appeared and the click silently did
+  // nothing. This tracks the click itself; setChoice still owns the store commit.
+  const [pendingChoice, setPendingChoice] = useState<Record<string, ExistingCategoryChoice>>({});
 
   function choiceFor(categoryId: string): ExistingCategoryChoice {
+    if (pendingChoice[categoryId]) return pendingChoice[categoryId];
     const existing = lifeChanges.find((c) => "currentCategoryId" in c && c.currentCategoryId === categoryId);
     return (existing?.changeType as ExistingCategoryChoice | undefined) ?? "KEEP";
   }
@@ -34,6 +41,17 @@ export default function IntendedLifePage() {
     return fallback;
   }
 
+  function selectChoice(categoryId: string, changeType: ExistingCategoryChoice, currentAmountValue: string) {
+    setPendingChoice((prev) => ({ ...prev, [categoryId]: changeType }));
+    if (changeType === "KEEP" || changeType === "REMOVE") {
+      setChoice(categoryId, changeType);
+    } else if (currentAmountValue !== "") {
+      // a current amount exists — commit it immediately as the starting point, same as before
+      setChoice(categoryId, changeType, currentAmountValue);
+    }
+    // otherwise: just show the (now-empty) amount input and wait for the owner to type and blur
+  }
+
   function setChoice(categoryId: string, changeType: ExistingCategoryChoice, amountRaw?: string) {
     setLifeChanges((prev) => {
       const withoutThis = prev.filter((c) => !("currentCategoryId" in c) || c.currentCategoryId !== categoryId);
@@ -41,7 +59,8 @@ export default function IntendedLifePage() {
         return [...withoutThis, { currentCategoryId: categoryId, changeType }];
       }
       if (amountRaw === undefined || amountRaw.trim() === "") {
-        // no amount yet — don't record an incomplete REDUCE/INCREASE change; treat as KEEP until confirmed
+        // no amount yet — leave the store's KEEP in place; the pending-choice
+        // state above is what keeps the amount input visible in the meantime
         return withoutThis;
       }
       try {
@@ -113,7 +132,7 @@ export default function IntendedLifePage() {
                   type="button"
                   role="radio"
                   aria-checked={choice === opt.value}
-                  onClick={() => setChoice(category.id, opt.value, amountRawFor(category.id, category.currentAmount?.value ?? ""))}
+                  onClick={() => selectChoice(category.id, opt.value, category.currentAmount?.value ?? "")}
                   className={`rounded-md border px-3 py-2 text-sm ${
                     choice === opt.value ? "border-accent bg-accent/10 font-medium" : "border-ink/25"
                   }`}
@@ -123,6 +142,7 @@ export default function IntendedLifePage() {
               ))}
               {(choice === "REDUCE" || choice === "INCREASE") && (
                 <input
+                  key={choice}
                   type="text"
                   inputMode="decimal"
                   aria-label={`New monthly amount for ${category.label}`}

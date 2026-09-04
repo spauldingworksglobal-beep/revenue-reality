@@ -171,6 +171,84 @@ export function buildIntendedLifeCategories(
   return result;
 }
 
+// ---- building intended security from current security ----
+
+export type SecurityItemChange =
+  | { currentSecurityId: ID; changeType: "KEEP" }
+  | { currentSecurityId: ID; changeType: "REDUCE" | "INCREASE"; newAmount: ConfidenceValue<Money> }
+  | { currentSecurityId: ID; changeType: "REMOVE" }
+  | {
+      changeType: "ADD";
+      id: ID;
+      kind: SecurityItemKind;
+      label: string;
+      newAmount: ConfidenceValue<Money>;
+      cadence: SecurityItem["cadence"];
+    };
+
+/**
+ * Intended Security must not begin as a blank reconstruction of Current
+ * Security — every current item not explicitly addressed carries over as
+ * an implicit KEEP, exactly like buildIntendedLifeCategories. `SecurityItem`
+ * has no `changeType` field (unlike LifeCategory), so this works entirely
+ * within the existing currentAmount/intendedAmount shape rather than adding
+ * one — the change decision is transient input, not persisted taxonomy.
+ *
+ * An implicit or explicit KEEP carries `currentAmount` straight into
+ * `intendedAmount` even when it's null — an incomplete current value stays
+ * incomplete (still null) unless the owner's change supplies a real
+ * `newAmount`. Nothing here converts "unknown" into "$0".
+ */
+export function buildIntendedSecurityItems(
+  lifeProfileId: ID,
+  current: SecurityItem[],
+  changes: SecurityItemChange[],
+): SecurityItem[] {
+  const referencedIds = new Set(
+    changes
+      .filter((c): c is Extract<SecurityItemChange, { currentSecurityId: ID }> => c.changeType !== "ADD")
+      .map((c) => c.currentSecurityId),
+  );
+  const bySourceId = new Map(current.map((c) => [c.id, c]));
+  const result: SecurityItem[] = [];
+
+  for (const change of changes) {
+    if (change.changeType === "ADD") {
+      result.push({
+        id: change.id,
+        lifeProfileId,
+        kind: change.kind,
+        label: change.label,
+        currentAmount: null,
+        intendedAmount: change.newAmount,
+        cadence: change.cadence,
+      });
+      continue;
+    }
+
+    const source = bySourceId.get(change.currentSecurityId);
+    if (!source) {
+      throw new RangeError(`buildIntendedSecurityItems: no current security item with id "${change.currentSecurityId}"`);
+    }
+
+    if (change.changeType === "KEEP") {
+      result.push({ ...source, intendedAmount: source.currentAmount });
+    } else if (change.changeType === "REMOVE") {
+      result.push({ ...source, intendedAmount: { value: "0.00", confidence: "EXACT" } });
+    } else {
+      result.push({ ...source, intendedAmount: change.newAmount });
+    }
+  }
+
+  for (const source of current) {
+    if (!referencedIds.has(source.id)) {
+      result.push({ ...source, intendedAmount: source.currentAmount });
+    }
+  }
+
+  return result;
+}
+
 // ---- current vs. intended comparison ----
 
 export interface LifeHorizonSummary {

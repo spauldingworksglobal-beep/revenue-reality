@@ -4,13 +4,14 @@ import { useMemo, useState } from "react";
 import type { FundingSource } from "@revenue-reality/domain";
 import {
   buildIntendedLifeCategories,
+  buildIntendedSecurityItems,
   compareLifeRequirements,
   formatMoney,
   parseMoney,
-  resolveBusinessFundedAmount,
-  subtract,
+  resolveConfirmedBusinessFundedAmount,
+  type BusinessFundedConfirmation,
 } from "@revenue-reality/revenue-engine";
-import { ValidationError, parseCurrencyInput, parsePercentInput } from "@revenue-reality/validation";
+import { ValidationError, parseCurrencyInput } from "@revenue-reality/validation";
 import { FUNDING_SHARE_PRESETS } from "@/lib/presets";
 import { WizardShell, EphemeralNotice } from "@/components/WizardShell";
 import { useLifeReality } from "@/lib/life-store";
@@ -29,25 +30,29 @@ export default function IntendedFundingPage() {
     currentCategories,
     lifeChanges,
     currentSecurity,
-    intendedSecurity,
+    securityChanges,
     deferredNeeds,
     intendedFundingSources,
     setIntendedFundingSources,
-    outsideFundingRetained,
-    setOutsideFundingRetained,
+    businessFundedConfirmation,
+    setBusinessFundedConfirmation,
   } = useLifeReality();
 
   const [mode, setMode] = useState<"AMOUNT" | "PERCENT">("PERCENT");
-  const [raw, setRaw] = useState(outsideFundingRetained ? "" : "");
-  const [confirmed, setConfirmed] = useState(outsideFundingRetained !== null);
+  const [raw, setRaw] = useState("");
+  const [confirmed, setConfirmed] = useState(businessFundedConfirmation !== null);
   const [error, setError] = useState<string | null>(null);
 
-  // Intended categories are DERIVED from current + the owner's Keep/Reduce/Increase/Remove/Add
-  // decisions — never re-entered. Importing this here (rather than in the store) keeps the
+  // Intended categories/security are DERIVED from current + the owner's
+  // Keep/Reduce/Increase/Remove/Add decisions — never re-entered. Keeping the
   // derivation in exactly one place: the engine.
   const intendedCategories = useMemo(
     () => buildIntendedLifeCategories("ephemeral-life-profile", currentCategories, lifeChanges),
     [currentCategories, lifeChanges],
+  );
+  const intendedSecurity = useMemo(
+    () => buildIntendedSecurityItems("ephemeral-life-profile", currentSecurity, securityChanges),
+    [currentSecurity, securityChanges],
   );
 
   const comparison = useMemo(
@@ -84,19 +89,18 @@ export default function IntendedFundingPage() {
       return;
     }
     try {
+      let confirmation: BusinessFundedConfirmation;
       if (mode === "PERCENT") {
         const businessPercentHuman = Number(raw);
         if (Number.isNaN(businessPercentHuman) || businessPercentHuman < 0 || businessPercentHuman > 100) {
           throw new ValidationError("businessShare", "Enter a percentage between 0 and 100.");
         }
-        const outsidePercentHuman = 100 - businessPercentHuman;
-        const outsidePercent = parsePercentInput(String(outsidePercentHuman));
-        setOutsideFundingRetained({ mode: "PERCENT_OF_TOTAL", percentOfTotal: outsidePercent, confidence: "STRONG_ESTIMATE" });
+        confirmation = { mode: "PERCENT_OF_TOTAL", percentOfTotal: String(businessPercentHuman / 100), confidence: "STRONG_ESTIMATE" };
       } else {
-        const businessAmount = parseMoney(parseCurrencyInput(raw));
-        const outsideAmount = subtract(totalIntended, businessAmount);
-        setOutsideFundingRetained({ mode: "AMOUNT", amount: formatMoney(outsideAmount), confidence: "STRONG_ESTIMATE" });
+        confirmation = { mode: "AMOUNT", amount: parseCurrencyInput(raw), confidence: "STRONG_ESTIMATE" };
       }
+      // Own the value the owner actually confirmed — never re-derive it later from a total that may have since changed.
+      setBusinessFundedConfirmation(confirmation);
       setError(null);
       setConfirmed(true);
     } catch (e) {
@@ -104,8 +108,8 @@ export default function IntendedFundingPage() {
     }
   }
 
-  const businessFunded = outsideFundingRetained
-    ? formatMoney(resolveBusinessFundedAmount(totalIntended, outsideFundingRetained))
+  const businessFunded = businessFundedConfirmation
+    ? formatMoney(resolveConfirmedBusinessFundedAmount(totalIntended, businessFundedConfirmation))
     : null;
 
   return (

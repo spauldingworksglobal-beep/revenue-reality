@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DeferredNeed, LifeCategory, SecurityItem } from "@revenue-reality/domain";
 import {
   buildIntendedLifeCategories,
+  buildIntendedSecurityItems,
   compareLifeRequirements,
   computeLifeRequirement,
   computeSecurityRequirement,
@@ -192,5 +193,71 @@ describe("compareLifeRequirements", () => {
     expect(comparison.intended.totalPersonalEconomicRequirement).toBe("2150.00");
 
     expect(comparison.deferredNeeds.included).toEqual([{ description: "Dental work postponed", amount: "150.00" }]);
+  });
+});
+
+describe("buildIntendedSecurityItems", () => {
+  const current = [
+    security({ id: "emergency", kind: "EMERGENCY_SAVINGS", label: "Emergency fund", currentAmount: { value: "200.00", confidence: "EXACT" } }),
+    security({ id: "retirement", kind: "RETIREMENT", label: "401k", currentAmount: { value: "300.00", confidence: "STRONG_ESTIMATE" } }),
+    security({ id: "investing", kind: "INVESTING", label: "Brokerage", currentAmount: { value: "100.00", confidence: "ROUGH_ESTIMATE" } }),
+    security({ id: "insurance", kind: "INSURANCE_BENEFITS", label: "Life insurance", currentAmount: null }),
+  ];
+
+  it("unchanged current security carries into intended — no blank reconstruction", () => {
+    const intended = buildIntendedSecurityItems("lp1", current, []);
+    expect(intended).toHaveLength(4);
+    const emergency = intended.find((s) => s.id === "emergency")!;
+    expect(emergency.intendedAmount).toEqual({ value: "200.00", confidence: "EXACT" });
+  });
+
+  it("increased amount", () => {
+    const intended = buildIntendedSecurityItems("lp1", current, [
+      { currentSecurityId: "retirement", changeType: "INCREASE", newAmount: { value: "500.00", confidence: "STRONG_ESTIMATE" } },
+    ]);
+    const retirement = intended.find((s) => s.id === "retirement")!;
+    expect(retirement.intendedAmount).toEqual({ value: "500.00", confidence: "STRONG_ESTIMATE" });
+    expect(retirement.currentAmount?.value).toBe("300.00"); // current untouched
+  });
+
+  it("reduced amount", () => {
+    const intended = buildIntendedSecurityItems("lp1", current, [
+      { currentSecurityId: "investing", changeType: "REDUCE", newAmount: { value: "50.00", confidence: "ROUGH_ESTIMATE" } },
+    ]);
+    expect(intended.find((s) => s.id === "investing")!.intendedAmount?.value).toBe("50.00");
+  });
+
+  it("removed item — an explicit, confident $0, not a dropped row", () => {
+    const intended = buildIntendedSecurityItems("lp1", current, [{ currentSecurityId: "emergency", changeType: "REMOVE" }]);
+    expect(intended.find((s) => s.id === "emergency")!.intendedAmount).toEqual({ value: "0.00", confidence: "EXACT" });
+    expect(intended).toHaveLength(4); // still present, not removed from the list
+  });
+
+  it("newly added intended security item — no current counterpart", () => {
+    const intended = buildIntendedSecurityItems("lp1", current, [
+      { changeType: "ADD", id: "giving", kind: "GIVING_FAMILY_SUPPORT", label: "Monthly giving", newAmount: { value: "75.00", confidence: "ROUGH_ESTIMATE" }, cadence: "MONTHLY" },
+    ]);
+    const giving = intended.find((s) => s.id === "giving")!;
+    expect(giving.currentAmount).toBeNull();
+    expect(giving.intendedAmount?.value).toBe("75.00");
+    expect(intended).toHaveLength(5);
+  });
+
+  it("incomplete current security remains visibly incomplete if not resolved — never silently zeroed", () => {
+    const intended = buildIntendedSecurityItems("lp1", current, []);
+    const insurance = intended.find((s) => s.id === "insurance")!;
+    expect(insurance.currentAmount).toBeNull();
+    expect(insurance.intendedAmount).toBeNull(); // still incomplete, NOT "0.00"
+  });
+
+  it("an owner resolving a previously-incomplete item explicitly overrides the gap", () => {
+    const intended = buildIntendedSecurityItems("lp1", current, [
+      { currentSecurityId: "insurance", changeType: "INCREASE", newAmount: { value: "40.00", confidence: "ROUGH_ESTIMATE" } },
+    ]);
+    expect(intended.find((s) => s.id === "insurance")!.intendedAmount?.value).toBe("40.00");
+  });
+
+  it("throws when a change references a current security item that doesn't exist", () => {
+    expect(() => buildIntendedSecurityItems("lp1", current, [{ currentSecurityId: "nonexistent", changeType: "KEEP" }])).toThrow(RangeError);
   });
 });

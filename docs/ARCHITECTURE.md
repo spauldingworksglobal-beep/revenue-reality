@@ -35,6 +35,12 @@ percent of the total — never both (`OutsideFundingRetained` in
 is computed once, in `resolveBusinessFundedRequirement` (`funding.ts`), and
 never independently stored elsewhere.
 
+**The owner never enters "outside funding retained" directly** — see
+"Life-8 funding responsibility" under Resolved methodology decisions below.
+`outsideFundingRetained` is an internal engine concept derived from what the
+owner actually confirms (`resolveConfirmedBusinessFundedAmount` /
+`deriveOutsideFundingRetained` in `funding.ts`).
+
 ## Ownership Economics + the Distribution Waterfall
 
 Revenue → contribution economics → operating costs *and labor* → **Operating
@@ -108,8 +114,8 @@ by this — only real user financial data is.
 
 ## Resolved methodology decisions
 
-These were open questions after the round-1 architecture review. Both are
-now decided; neither is an engineering judgment call.
+These were open questions after architecture review. All are now decided;
+none is an engineering judgment call.
 
 ### Restructured businesses
 
@@ -151,3 +157,35 @@ two-owner fixture. What is **not** modeled is a co-owner's own household
 Life Reality (their personal living costs, security goals, funding sources
 outside the business) — that stays out of scope for v1's session-scoped
 `life_profile`/`time_profile`.
+
+### Life-8 funding responsibility
+
+The user-facing question asks the owner directly what portion of their
+**personal economic requirement** the business should carry — never what
+they retain from outside sources. The owner enters this as *either* an
+explicit dollar amount *or* an explicit percentage of the total personal
+economic requirement; these are alternate modes and are never combined
+(the same amount/percent exclusivity rule used everywhere else in the
+funding model, `validateFundingModeExclusivity`).
+
+**The confirmed business-funded amount is the owner-facing concept and the
+one that's stored** (`BusinessFundedConfirmation` in `funding.ts` —
+structurally identical to `OutsideFundingRetained`, since it's the same
+one calculation viewed from the business's side). The engine derives
+`outsideFundingRetained` as this value's complement —
+`outsideFundingRetained = totalPersonalEconomicRequirement −
+businessFundedRequirement` — via `deriveOutsideFundingRetained`, the only
+place that derivation happens. The owner is never asked to reason in terms
+of "outside funding retained," even though that remains the shape
+`ScenarioLifeAssumption` consumes internally.
+
+This matters beyond wording: storing the business-funded figure as the
+source of truth (rather than storing the outside-retained figure and
+re-deriving business-funded from it) is what keeps an AMOUNT-mode
+confirmation stable if something upstream changes the total later — a
+dollar commitment the owner confirmed shouldn't silently drift because a
+security line item changed. A PERCENT-mode confirmation is expected to
+scale with the total; that's what committing to a percentage means. Both
+behaviors are exercised in `funding.test.ts`
+("Life-8 funding responsibility" suite) and the round-trip test proves the
+one-calculation property holds identically in both modes.

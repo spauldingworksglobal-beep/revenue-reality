@@ -3,10 +3,11 @@
 import { useMemo } from "react";
 import {
   buildIntendedLifeCategories,
+  buildIntendedSecurityItems,
   compareLifeRequirements,
   formatMoney,
   parseMoney,
-  resolveBusinessFundedAmount,
+  resolveConfirmedBusinessFundedAmount,
 } from "@revenue-reality/revenue-engine";
 import { WizardShell } from "@/components/WizardShell";
 import { useLifeReality } from "@/lib/life-store";
@@ -28,15 +29,19 @@ export default function LifeComparePage() {
     currentCategories,
     lifeChanges,
     currentSecurity,
-    intendedSecurity,
+    securityChanges,
     deferredNeeds,
     intendedLifeOutcomes,
-    outsideFundingRetained,
+    businessFundedConfirmation,
   } = useLifeReality();
 
   const intendedCategories = useMemo(
     () => buildIntendedLifeCategories("ephemeral-life-profile", currentCategories, lifeChanges),
     [currentCategories, lifeChanges],
+  );
+  const intendedSecurity = useMemo(
+    () => buildIntendedSecurityItems("ephemeral-life-profile", currentSecurity, securityChanges),
+    [currentSecurity, securityChanges],
   );
 
   const comparison = useMemo(
@@ -45,7 +50,9 @@ export default function LifeComparePage() {
   );
 
   const totalIntended = parseMoney(comparison.intended.totalPersonalEconomicRequirement);
-  const businessFunded = outsideFundingRetained ? formatMoney(resolveBusinessFundedAmount(totalIntended, outsideFundingRetained)) : null;
+  const businessFunded = businessFundedConfirmation
+    ? formatMoney(resolveConfirmedBusinessFundedAmount(totalIntended, businessFundedConfirmation))
+    : null;
 
   return (
     <WizardShell

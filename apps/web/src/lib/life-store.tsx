@@ -1,14 +1,8 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import type {
-  DeferredNeed,
-  FundingSource,
-  LifeCategory,
-  OutsideFundingRetained,
-  SecurityItem,
-} from "@revenue-reality/domain";
-import type { LifeCategoryChange } from "@revenue-reality/revenue-engine";
+import type { DeferredNeed, FundingSource, LifeCategory, SecurityItem } from "@revenue-reality/domain";
+import type { BusinessFundedConfirmation, LifeCategoryChange, SecurityItemChange } from "@revenue-reality/revenue-engine";
 import { LIFE_CATEGORY_PRESETS, SECURITY_ITEM_PRESETS } from "./presets";
 import { newId } from "./ids";
 
@@ -59,8 +53,9 @@ interface LifeRealityContextValue {
   lifeChanges: LifeCategoryChange[];
   setLifeChanges: (updater: (prev: LifeCategoryChange[]) => LifeCategoryChange[]) => void;
 
-  intendedSecurity: SecurityItem[];
-  setIntendedSecurity: (updater: (prev: SecurityItem[]) => SecurityItem[]) => void;
+  /** Intended Security is DERIVED from currentSecurity + these changes (buildIntendedSecurityItems) — never stored as its own blank-seeded list. */
+  securityChanges: SecurityItemChange[];
+  setSecurityChanges: (updater: (prev: SecurityItemChange[]) => SecurityItemChange[]) => void;
 
   intendedLifeOutcomes: string[];
   setIntendedLifeOutcomes: (updater: (prev: string[]) => string[]) => void;
@@ -68,8 +63,9 @@ interface LifeRealityContextValue {
   intendedFundingSources: FundingSource[];
   setIntendedFundingSources: (updater: (prev: FundingSource[]) => FundingSource[]) => void;
 
-  outsideFundingRetained: OutsideFundingRetained | null;
-  setOutsideFundingRetained: (value: OutsideFundingRetained | null) => void;
+  /** Owner-facing: what the business is confirmed to fund. The engine derives outsideFundingRetained from this — never the other way around. */
+  businessFundedConfirmation: BusinessFundedConfirmation | null;
+  setBusinessFundedConfirmation: (value: BusinessFundedConfirmation | null) => void;
 }
 
 const LifeRealityContext = createContext<LifeRealityContextValue | null>(null);
@@ -80,10 +76,10 @@ export function LifeRealityProvider({ children }: { children: ReactNode }) {
   const [currentFundingSources, setCurrentFundingSourcesState] = useState<FundingSource[]>([]);
   const [deferredNeeds, setDeferredNeedsState] = useState<DeferredNeed[]>([]);
   const [lifeChanges, setLifeChangesState] = useState<LifeCategoryChange[]>([]);
-  const [intendedSecurity, setIntendedSecurityState] = useState<SecurityItem[]>(seedSecurity);
+  const [securityChanges, setSecurityChangesState] = useState<SecurityItemChange[]>([]);
   const [intendedLifeOutcomes, setIntendedLifeOutcomesState] = useState<string[]>([]);
   const [intendedFundingSources, setIntendedFundingSourcesState] = useState<FundingSource[]>([]);
-  const [outsideFundingRetained, setOutsideFundingRetained] = useState<OutsideFundingRetained | null>(null);
+  const [businessFundedConfirmation, setBusinessFundedConfirmation] = useState<BusinessFundedConfirmation | null>(null);
 
   const value = useMemo<LifeRealityContextValue>(
     () => ({
@@ -99,14 +95,14 @@ export function LifeRealityProvider({ children }: { children: ReactNode }) {
       setDeferredNeeds: (updater) => setDeferredNeedsState(updater),
       lifeChanges,
       setLifeChanges: (updater) => setLifeChangesState(updater),
-      intendedSecurity,
-      setIntendedSecurity: (updater) => setIntendedSecurityState(updater),
+      securityChanges,
+      setSecurityChanges: (updater) => setSecurityChangesState(updater),
       intendedLifeOutcomes,
       setIntendedLifeOutcomes: (updater) => setIntendedLifeOutcomesState(updater),
       intendedFundingSources,
       setIntendedFundingSources: (updater) => setIntendedFundingSourcesState(updater),
-      outsideFundingRetained,
-      setOutsideFundingRetained,
+      businessFundedConfirmation,
+      setBusinessFundedConfirmation,
     }),
     [
       currentCategories,
@@ -114,10 +110,10 @@ export function LifeRealityProvider({ children }: { children: ReactNode }) {
       currentFundingSources,
       deferredNeeds,
       lifeChanges,
-      intendedSecurity,
+      securityChanges,
       intendedLifeOutcomes,
       intendedFundingSources,
-      outsideFundingRetained,
+      businessFundedConfirmation,
     ],
   );
 
