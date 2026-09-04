@@ -59,7 +59,8 @@ export default function LifeComparePage() {
       eyebrow="Life Reality · Comparison"
       title="Here is the life you described. Does this reflect where you are now and what you're building toward?"
       backHref="/life/intended/funding"
-      nextHref={undefined}
+      nextHref="/life/time/current"
+      nextLabel="Continue to Time Reality"
     >
       <div className="overflow-x-auto rounded-lg border border-ink/15 bg-white p-4">
         <table className="w-full text-sm">
@@ -149,7 +150,7 @@ export default function LifeComparePage() {
       )}
 
       <p className="rounded-md bg-ink/5 px-4 py-3 text-sm text-ink/70">
-        Milestone 2 ends here. Next, Revenue Reality asks about your time — and only after that,
+        Life Reality is complete. Next, Revenue Reality asks about your time — and only after that,
         the business.
       </p>
     </WizardShell>

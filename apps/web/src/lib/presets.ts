@@ -52,3 +52,45 @@ export const FUNDING_SHARE_PRESETS: { label: string; suggestedPercent: string }[
   { label: "Primary", suggestedPercent: "75" },
   { label: "All", suggestedPercent: "100" },
 ];
+
+/** Quick-add suggestions for competing time claims — context only, never quantified by requirement. */
+export const TIME_CLAIM_PRESETS = [
+  "Another job",
+  "Caregiving",
+  "Children / family responsibilities",
+  "Health",
+  "School",
+  "Commuting",
+  "Household responsibilities",
+] as const;
+
+export const DESIRED_WORK_TYPE_OPTIONS = [
+  "Create / deliver the work",
+  "Sell",
+  "Lead",
+  "Manage the team",
+  "Strategy",
+  "Relationships",
+] as const;
+
+/** Qualitative only — no cost modeling here. What eventually shouldn't depend on the owner. */
+export const WORK_TO_DELEGATE_OPTIONS = [
+  "Day-to-day delivery / production",
+  "Selling",
+  "Bookkeeping / admin",
+  "Customer support",
+  "Marketing",
+  "Operations",
+] as const;
+
+/** What the business must leave room for — Build Spec Time-6. */
+export const LIFE_PRIORITY_OPTIONS = [
+  "Sleep / health",
+  "Family",
+  "Another career",
+  "Relationships",
+  "Flexibility",
+  "Creative work",
+  "Community",
+  "Travel",
+] as const;

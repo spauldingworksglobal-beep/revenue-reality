@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import type { DeferredNeed, FundingSource, LifeCategory, SecurityItem } from "@revenue-reality/domain";
+import type { ConfidenceValue, DeferredNeed, FundingSource, LifeCategory, SecurityItem } from "@revenue-reality/domain";
 import type { BusinessFundedConfirmation, LifeCategoryChange, SecurityItemChange } from "@revenue-reality/revenue-engine";
 import { LIFE_CATEGORY_PRESETS, SECURITY_ITEM_PRESETS } from "./presets";
 import { newId } from "./ids";
@@ -32,6 +32,11 @@ function seedSecurity(): SecurityItem[] {
     intendedAmount: null,
     cadence: "MONTHLY" as const,
   }));
+}
+
+/** Unset hours default to INCOMPLETE confidence, not a claimed "0" — the owner hasn't answered yet. */
+function unsetHours(): ConfidenceValue<number> {
+  return { value: 0, confidence: "INCOMPLETE" };
 }
 
 interface LifeRealityContextValue {
@@ -66,6 +71,33 @@ interface LifeRealityContextValue {
   /** Owner-facing: what the business is confirmed to fund. The engine derives outsideFundingRetained from this — never the other way around. */
   businessFundedConfirmation: BusinessFundedConfirmation | null;
   setBusinessFundedConfirmation: (value: BusinessFundedConfirmation | null) => void;
+
+  // ---- Time Reality ----
+  currentAvailableHoursWeek: ConfidenceValue<number>;
+  setCurrentAvailableHoursWeek: (value: ConfidenceValue<number>) => void;
+
+  currentBusinessHoursWeek: ConfidenceValue<number>;
+  setCurrentBusinessHoursWeek: (value: ConfidenceValue<number>) => void;
+
+  intendedAvailableHoursWeek: ConfidenceValue<number>;
+  setIntendedAvailableHoursWeek: (value: ConfidenceValue<number>) => void;
+
+  ultimateBusinessHoursWeek: ConfidenceValue<number>;
+  setUltimateBusinessHoursWeek: (value: ConfidenceValue<number>) => void;
+
+  /** Context only — never used to derive availableHoursWeek. */
+  otherTimeClaims: { label: string; hoursWeek?: number }[];
+  setOtherTimeClaims: (updater: (prev: { label: string; hoursWeek?: number }[]) => { label: string; hoursWeek?: number }[]) => void;
+
+  desiredWorkTypes: string[];
+  setDesiredWorkTypes: (updater: (prev: string[]) => string[]) => void;
+
+  /** Qualitative only — no cost modeling at this milestone. */
+  workToEventuallyDelegate: string[];
+  setWorkToEventuallyDelegate: (updater: (prev: string[]) => string[]) => void;
+
+  lifePriorityReservations: string[];
+  setLifePriorityReservations: (updater: (prev: string[]) => string[]) => void;
 }
 
 const LifeRealityContext = createContext<LifeRealityContextValue | null>(null);
@@ -80,6 +112,15 @@ export function LifeRealityProvider({ children }: { children: ReactNode }) {
   const [intendedLifeOutcomes, setIntendedLifeOutcomesState] = useState<string[]>([]);
   const [intendedFundingSources, setIntendedFundingSourcesState] = useState<FundingSource[]>([]);
   const [businessFundedConfirmation, setBusinessFundedConfirmation] = useState<BusinessFundedConfirmation | null>(null);
+
+  const [currentAvailableHoursWeek, setCurrentAvailableHoursWeek] = useState<ConfidenceValue<number>>(unsetHours);
+  const [currentBusinessHoursWeek, setCurrentBusinessHoursWeek] = useState<ConfidenceValue<number>>(unsetHours);
+  const [intendedAvailableHoursWeek, setIntendedAvailableHoursWeek] = useState<ConfidenceValue<number>>(unsetHours);
+  const [ultimateBusinessHoursWeek, setUltimateBusinessHoursWeek] = useState<ConfidenceValue<number>>(unsetHours);
+  const [otherTimeClaims, setOtherTimeClaimsState] = useState<{ label: string; hoursWeek?: number }[]>([]);
+  const [desiredWorkTypes, setDesiredWorkTypesState] = useState<string[]>([]);
+  const [workToEventuallyDelegate, setWorkToEventuallyDelegateState] = useState<string[]>([]);
+  const [lifePriorityReservations, setLifePriorityReservationsState] = useState<string[]>([]);
 
   const value = useMemo<LifeRealityContextValue>(
     () => ({
@@ -103,6 +144,22 @@ export function LifeRealityProvider({ children }: { children: ReactNode }) {
       setIntendedFundingSources: (updater) => setIntendedFundingSourcesState(updater),
       businessFundedConfirmation,
       setBusinessFundedConfirmation,
+      currentAvailableHoursWeek,
+      setCurrentAvailableHoursWeek,
+      currentBusinessHoursWeek,
+      setCurrentBusinessHoursWeek,
+      intendedAvailableHoursWeek,
+      setIntendedAvailableHoursWeek,
+      ultimateBusinessHoursWeek,
+      setUltimateBusinessHoursWeek,
+      otherTimeClaims,
+      setOtherTimeClaims: (updater) => setOtherTimeClaimsState(updater),
+      desiredWorkTypes,
+      setDesiredWorkTypes: (updater) => setDesiredWorkTypesState(updater),
+      workToEventuallyDelegate,
+      setWorkToEventuallyDelegate: (updater) => setWorkToEventuallyDelegateState(updater),
+      lifePriorityReservations,
+      setLifePriorityReservations: (updater) => setLifePriorityReservationsState(updater),
     }),
     [
       currentCategories,
@@ -114,6 +171,14 @@ export function LifeRealityProvider({ children }: { children: ReactNode }) {
       intendedLifeOutcomes,
       intendedFundingSources,
       businessFundedConfirmation,
+      currentAvailableHoursWeek,
+      currentBusinessHoursWeek,
+      intendedAvailableHoursWeek,
+      ultimateBusinessHoursWeek,
+      otherTimeClaims,
+      desiredWorkTypes,
+      workToEventuallyDelegate,
+      lifePriorityReservations,
     ],
   );
 

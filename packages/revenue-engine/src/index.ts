@@ -6,6 +6,7 @@ export * from "./operating-cost";
 export * from "./capital";
 export * from "./funding";
 export * from "./life-reality";
+export * from "./time-reality";
 export * from "./owner-economics";
 export * from "./distribution";
 export * from "./revenue";

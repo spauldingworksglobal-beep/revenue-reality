@@ -88,6 +88,8 @@ export interface TimeProfile {
   intendedAvailableHoursWeek: ConfidenceValue<number>;
   ultimateBusinessHoursWeek: ConfidenceValue<number>;
   desiredWorkTypes: string[];
+  /** Qualitative only — no cost attached here. Delegation cost belongs to ULTIMATELY business economics, a later milestone. */
+  workToEventuallyDelegate: string[];
   otherTimeClaims: { label: string; hoursWeek?: number }[];
   lifePriorityReservations: string[];
 }
