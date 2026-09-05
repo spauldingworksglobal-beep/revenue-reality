@@ -56,7 +56,7 @@ export function resolveDistributionPercent(
   const rule: DistributionRule = policy.rule;
   switch (rule) {
     case "SAME_AS_OWNERSHIP":
-      return dec(owner.ownershipPercent);
+      return owner.ownershipPercent === null ? null : dec(owner.ownershipPercent);
     case "EQUAL_SPLIT":
       return divide(dec(1), dec(allOwners.length));
     case "CUSTOM_PERCENTAGE":

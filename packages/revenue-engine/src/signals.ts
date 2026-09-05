@@ -24,5 +24,8 @@ export function computeCapacitySignal(capacity: Capacity): CapacitySignal {
 
 /** "A business can be mathematically profitable and still be personally impossible" — Method v1.4 §03. */
 export function computeTimeSignal(time: ScenarioTimeAssumption): TimeSignal {
+  if (time.businessHoursWeek.confidence === "INCOMPLETE" || time.availableHoursWeek.confidence === "INCOMPLETE") {
+    return "INSUFFICIENT_DATA";
+  }
   return time.businessHoursWeek.value > time.availableHoursWeek.value ? "EXCEEDS_AVAILABLE" : "FITS";
 }

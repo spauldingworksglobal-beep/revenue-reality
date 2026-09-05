@@ -28,7 +28,14 @@ export interface OwnerCashReceived {
 export interface OwnerEconomics {
   scenarioId: ID;
   ownerId: ID;
-  ownershipPercent: Percent; // Σ across a scenario's owners must equal 1 (100%) — validated
+  /**
+   * null when this owner's ownership share has never been confirmed — genuinely
+   * unknown, never assumed/equal-split. Only consumed by the SAME_AS_OWNERSHIP
+   * distribution rule; every other rule ignores it entirely, so unknown ownership
+   * never blocks a NOW calculation unless "Same as ownership" is actually chosen.
+   * When non-null, Σ across a scenario's owners must equal 1 (100%) — validated.
+   */
+  ownershipPercent: Percent | null;
   distributionPercent: Percent | null; // entered only for CUSTOM_PERCENTAGE; engine derives it otherwise; null for DISCRETIONARY/OTHER
   isPrimaryRespondent: boolean; // whose businessFundedRequirement drives backward-solving
 

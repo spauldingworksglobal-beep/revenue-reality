@@ -1,4 +1,12 @@
-import type { ID, ISODate, OwnerEconomicsResult, ScenarioEngineInput, ScenarioResult } from "@revenue-reality/domain";
+import type {
+  ID,
+  ISODate,
+  OwnerEconomicsResult,
+  OwnerSupportSignal,
+  PrimaryOwnerBenefitVsRequirement,
+  ScenarioEngineInput,
+  ScenarioResult,
+} from "@revenue-reality/domain";
 import {
   validateDistributionPercentagesSum100,
   validateMixWeightsSum100,
@@ -37,7 +45,7 @@ export interface RunScenarioMeta {
  */
 export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): ScenarioResult {
   validateMixWeightsSum100(input.streams);
-  validateOwnershipPercentagesSum100(input.ownerEconomics);
+  validateOwnershipPercentagesSum100(input.ownerEconomics, input.distributionPolicy);
   validateDistributionPercentagesSum100(input.ownerEconomics, input.distributionPolicy);
 
   const primaryOwners = input.ownerEconomics.filter((o) => o.isPrimaryRespondent);
@@ -72,32 +80,41 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
 
   const confidenceFlags = collectInputConfidenceFlags(input);
 
-  // --- backward solve: always computed, for all three scenario types ---
+  // --- backward solve: only possible once funding responsibility is confirmed ---
+  // businessFundedRequirement === null means the owner has never answered "how much
+  // of your personal economic requirement is this business responsible for" — a
+  // specific policy fact, never defaulted. Required Revenue is life-linked by
+  // definition, so it stays unavailable (not a fabricated $0-retained guess) until
+  // that's answered. Every other output below is entirely unaffected.
   const primaryCash = cashByOwner.get(primaryOwner.ownerId)!;
   const primaryDistPercent = resolveDistributionPercent(primaryOwner, input.ownerEconomics, input.distributionPolicy);
-  const backward = solveRequiredRevenueFromOwnerTarget({
-    businessFundedRequirement: funding.businessFundedRequirement,
-    primaryOwnerTargetLaborCompensation: primaryCash.laborCompensation,
-    primaryOwnerDistributionPercent: primaryDistPercent,
-    manualRequiredDistributableSurplus: null,
-    knownOperatingCostMonthly: knownOpex.monthly,
-    allOwnersLaborCompensation: allOwnersLaborComp,
-    requiredRetainedCapitalTotal: retainedCapital.total,
-    weightedContributionMargin,
-  });
 
-  let requiredRevenue: Dec;
-  let requiredEconomicContribution: Dec;
-  if (backward.status === "SOLVED") {
-    requiredRevenue = backward.requiredRevenue;
-    requiredEconomicContribution = backward.requiredEconomicContribution;
-  } else {
-    // Graceful degradation (never block): a floor covering only known costs,
-    // labor, and retention — explicitly NOT the owner's profit distribution
-    // need, since that couldn't be resolved. Flagged INCOMPLETE, not hidden.
-    requiredEconomicContribution = add(knownOpex.monthly, retainedCapital.total, ...allOwnersLaborComp);
-    requiredRevenue = divide(requiredEconomicContribution, weightedContributionMargin);
-    confidenceFlags.push({ field: "primaryOwnerEconomics.profitDistribution", confidence: "INCOMPLETE" });
+  let requiredRevenue: Dec | null = null;
+  let requiredEconomicContribution: Dec | null = null;
+
+  if (funding.businessFundedRequirement !== null) {
+    const backward = solveRequiredRevenueFromOwnerTarget({
+      businessFundedRequirement: funding.businessFundedRequirement,
+      primaryOwnerTargetLaborCompensation: primaryCash.laborCompensation,
+      primaryOwnerDistributionPercent: primaryDistPercent,
+      manualRequiredDistributableSurplus: null,
+      knownOperatingCostMonthly: knownOpex.monthly,
+      allOwnersLaborCompensation: allOwnersLaborComp,
+      requiredRetainedCapitalTotal: retainedCapital.total,
+      weightedContributionMargin,
+    });
+
+    if (backward.status === "SOLVED") {
+      requiredRevenue = backward.requiredRevenue;
+      requiredEconomicContribution = backward.requiredEconomicContribution;
+    } else {
+      // Graceful degradation (never block): a floor covering only known costs,
+      // labor, and retention — explicitly NOT the owner's profit distribution
+      // need, since that couldn't be resolved. Flagged INCOMPLETE, not hidden.
+      requiredEconomicContribution = add(knownOpex.monthly, retainedCapital.total, ...allOwnersLaborComp);
+      requiredRevenue = divide(requiredEconomicContribution, weightedContributionMargin);
+      confidenceFlags.push({ field: "primaryOwnerEconomics.profitDistribution", confidence: "INCOMPLETE" });
+    }
   }
 
   // --- forward pass: actual revenue for NOW, solved revenue for NEXT/ULTIMATELY ---
@@ -108,6 +125,9 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
     }
     forwardRevenue = parseMoney(input.actualRevenue);
   } else {
+    if (requiredRevenue === null) {
+      throw new RangeError("NEXT/ULTIMATELY scenarios require a resolvable required revenue — confirm funding responsibility first");
+    }
     forwardRevenue = requiredRevenue;
   }
 
@@ -159,10 +179,24 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
 
   const primaryResult = ownerEconomicsResults.find((r) => r.ownerId === primaryOwner.ownerId)!;
   const primaryTotalBenefit = parseMoney(primaryResult.totalOwnerEconomicBenefit);
-  const gap = subtract(primaryTotalBenefit, funding.businessFundedRequirement);
-  const ownerSupportSignal = computeOwnerSupportSignal(primaryTotalBenefit, funding.businessFundedRequirement);
 
-  const requiredVolumeByStream = computeRequiredVolume(requiredRevenue, streamEconomics);
+  let primaryOwnerBenefitVsRequirement: PrimaryOwnerBenefitVsRequirement | null;
+  let ownerSupportSignal: OwnerSupportSignal;
+  if (funding.businessFundedRequirement === null) {
+    // No confirmed requirement to compare against — there is nothing honest to report here.
+    primaryOwnerBenefitVsRequirement = null;
+    ownerSupportSignal = "INSUFFICIENT_DATA";
+  } else {
+    const gap = subtract(primaryTotalBenefit, funding.businessFundedRequirement);
+    primaryOwnerBenefitVsRequirement = {
+      businessFundedPersonalEconomicRequirement: formatMoney(funding.businessFundedRequirement),
+      totalOwnerEconomicBenefit: formatMoney(primaryTotalBenefit),
+      gap: formatMoney(gap),
+    };
+    ownerSupportSignal = computeOwnerSupportSignal(primaryTotalBenefit, funding.businessFundedRequirement);
+  }
+
+  const requiredVolumeByStream = requiredRevenue === null ? null : computeRequiredVolume(requiredRevenue, streamEconomics);
   const breakEven = computeBreakEvenFloor(knownOpex.monthly, weightedContributionMargin, streamEconomics);
 
   const capacitySignal = computeCapacitySignal(input.capacity);
@@ -174,10 +208,10 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
     computedAt: meta.computedAt ?? new Date().toISOString(),
 
     actualRevenue: input.scenarioType === "NOW" ? input.actualRevenue : null,
-    requiredEconomicContribution: formatMoney(requiredEconomicContribution),
+    requiredEconomicContribution: requiredEconomicContribution === null ? null : formatMoney(requiredEconomicContribution),
     weightedContributionMargin: formatPercent(weightedContributionMargin),
-    requiredRevenue: formatMoney(requiredRevenue),
-    requiredVolumeByStream: requiredVolumeByStream.map((v) => ({ streamId: v.streamId, volume: v.volume })),
+    requiredRevenue: requiredRevenue === null ? null : formatMoney(requiredRevenue),
+    requiredVolumeByStream: requiredVolumeByStream === null ? null : requiredVolumeByStream.map((v) => ({ streamId: v.streamId, volume: v.volume })),
     breakEvenFloor: {
       revenue: formatMoney(breakEven.revenue),
       volumeByStream: breakEven.volumeByStream.map((v) => ({ streamId: v.streamId, volume: v.volume })),
@@ -197,11 +231,7 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
     },
     distributableEconomicSurplus: formatMoney(distributableEconomicSurplus),
     ownerEconomicsResults,
-    primaryOwnerBenefitVsRequirement: {
-      businessFundedPersonalEconomicRequirement: formatMoney(funding.businessFundedRequirement),
-      totalOwnerEconomicBenefit: formatMoney(primaryTotalBenefit),
-      gap: formatMoney(gap),
-    },
+    primaryOwnerBenefitVsRequirement,
 
     ownerSupportSignal,
     capacitySignal,

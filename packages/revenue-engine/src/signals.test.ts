@@ -63,4 +63,12 @@ describe("computeTimeSignal", () => {
   it("business hours exceeding available hours ⇒ EXCEEDS_AVAILABLE", () => {
     expect(computeTimeSignal(time({ businessHoursWeek: { value: 25, confidence: "EXACT" } }))).toBe("EXCEEDS_AVAILABLE");
   });
+
+  it("available hours never confirmed (INCOMPLETE) ⇒ INSUFFICIENT_DATA, never a false EXCEEDS_AVAILABLE off a placeholder 0", () => {
+    expect(computeTimeSignal(time({ availableHoursWeek: { value: 0, confidence: "INCOMPLETE" } }))).toBe("INSUFFICIENT_DATA");
+  });
+
+  it("business hours INCOMPLETE ⇒ INSUFFICIENT_DATA", () => {
+    expect(computeTimeSignal(time({ businessHoursWeek: { value: 0, confidence: "INCOMPLETE" } }))).toBe("INSUFFICIENT_DATA");
+  });
 });

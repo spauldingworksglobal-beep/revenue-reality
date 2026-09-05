@@ -4,14 +4,20 @@ import { useMemo } from "react";
 import Link from "next/link";
 import type { ConfidenceLevel } from "@revenue-reality/domain";
 import { ValidationError } from "@revenue-reality/validation";
-import { buildNowScenarioInput, formatMoney, runScenario, sumKnownOperatingCost, type NowScenarioMissingReason } from "@revenue-reality/revenue-engine";
+import {
+  buildNowScenarioInput,
+  formatMoney,
+  runScenario,
+  sumKnownOperatingCost,
+  withNowResultCaveats,
+  type NowScenarioMissingReason,
+} from "@revenue-reality/revenue-engine";
 import { WizardShell, EphemeralNotice } from "@/components/WizardShell";
 import { useLifeReality } from "@/lib/life-store";
 import { useNow } from "@/lib/now-store";
 
 const MISSING_LABELS: Record<NowScenarioMissingReason, { label: string; href: string }> = {
   ACTUAL_REVENUE: { label: "Actual revenue for the current period", href: "/now" },
-  CURRENT_FUNDING_CONFIRMATION: { label: "How much of your current life the business is responsible for funding", href: "/now" },
   NO_USABLE_REVENUE_STREAM: { label: "At least one revenue stream with a price and a Cost of Delivery entered", href: "/now/streams" },
 };
 
@@ -124,7 +130,7 @@ export default function NowResultPage() {
   let result;
   let runError: string | null = null;
   try {
-    result = runScenario(assembly.input, { revisionId: "now-preview" });
+    result = withNowResultCaveats(runScenario(assembly.input, { revisionId: "now-preview" }), assembly);
   } catch (e) {
     runError = e instanceof ValidationError ? e.message : e instanceof Error ? e.message : "Something in your NOW inputs doesn't add up yet.";
   }
@@ -143,11 +149,12 @@ export default function NowResultPage() {
     );
   }
 
-  const canCompareRevenueAlignment = revenuePeriod.periodType === "MONTH";
+  const canCompareRevenueAlignment = revenuePeriod.periodType === "MONTH" && result.requiredRevenue !== null;
   const revenueGapPercent =
-    canCompareRevenueAlignment && result.actualRevenue
+    canCompareRevenueAlignment && result.actualRevenue && result.requiredRevenue
       ? ((Number(result.actualRevenue) - Number(result.requiredRevenue)) / Number(result.requiredRevenue)) * 100
       : null;
+  const fundingUnconfirmed = assembly.input.lifeAssumption.outsideFundingRetained === null;
 
   return (
     <WizardShell
@@ -157,13 +164,31 @@ export default function NowResultPage() {
     >
       <EphemeralNotice />
 
-      {(assembly.ownershipSplitFallbackApplied || assembly.mixWeightFallbackApplied || assembly.excludedStreamIds.length > 0) && (
+      {(fundingUnconfirmed || assembly.unknownOwnershipOwnerIds.length > 0 || assembly.mixWeightFallbackApplied || assembly.excludedStreamIds.length > 0) && (
         <div className="flex flex-col gap-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-          {assembly.ownershipSplitFallbackApplied && (
-            <p>Ownership split isn&rsquo;t fully confirmed — an equal split was used as a placeholder for this calculation only.</p>
+          {fundingUnconfirmed && (
+            <p>
+              You haven&rsquo;t confirmed how much of your current life this business is responsible for funding — Required
+              Revenue and the owner-benefit comparison below aren&rsquo;t shown yet because of that. Everything else on this
+              page still reflects your real numbers.{" "}
+              <Link href="/now" className="font-medium underline">
+                Answer this on the NOW screen
+              </Link>
+              .
+            </p>
+          )}
+          {assembly.unknownOwnershipOwnerIds.length > 0 && (
+            <p>
+              Ownership isn&rsquo;t fully confirmed for {assembly.unknownOwnershipOwnerIds.length === 1 ? "one owner" : "some owners"} — this
+              stays unknown rather than assumed, and only blocks a &ldquo;Same as ownership&rdquo; distribution rule.
+            </p>
           )}
           {assembly.mixWeightFallbackApplied && (
-            <p>The revenue split between streams isn&rsquo;t fully confirmed — an equal split was used as a placeholder.</p>
+            <p>
+              The revenue split between streams isn&rsquo;t confirmed — an equal-weight split is used here as a temporary{" "}
+              <strong>modeling assumption</strong>, not a known fact (see &ldquo;still uncertain about&rdquo; below). It was
+              not saved back to your stream inputs.
+            </p>
           )}
           {assembly.excludedStreamIds.length > 0 && (
             <p>
@@ -272,22 +297,43 @@ export default function NowResultPage() {
             );
           })}
         </ul>
-        <p className="mt-2 text-sm">
-          Primary respondent&rsquo;s business-funded personal requirement: <strong>${result.primaryOwnerBenefitVsRequirement.businessFundedPersonalEconomicRequirement}</strong> vs.
-          actual benefit received: <strong>${result.primaryOwnerBenefitVsRequirement.totalOwnerEconomicBenefit}</strong> —{" "}
-          gap: <strong className={Number(result.primaryOwnerBenefitVsRequirement.gap) < 0 ? "text-red-700" : "text-emerald-700"}>
-            ${result.primaryOwnerBenefitVsRequirement.gap}
-          </strong>
-        </p>
+        {result.primaryOwnerBenefitVsRequirement ? (
+          <p className="mt-2 text-sm">
+            Primary respondent&rsquo;s business-funded personal requirement: <strong>${result.primaryOwnerBenefitVsRequirement.businessFundedPersonalEconomicRequirement}</strong> vs.
+            actual benefit received: <strong>${result.primaryOwnerBenefitVsRequirement.totalOwnerEconomicBenefit}</strong> —{" "}
+            gap: <strong className={Number(result.primaryOwnerBenefitVsRequirement.gap) < 0 ? "text-red-700" : "text-emerald-700"}>
+              ${result.primaryOwnerBenefitVsRequirement.gap}
+            </strong>
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-ink/50">
+            Incomplete — confirm your current funding responsibility on the{" "}
+            <Link href="/now" className="font-medium text-accent underline">
+              NOW screen
+            </Link>{" "}
+            to see this comparison.
+          </p>
+        )}
       </section>
 
       {/* What the model would need to produce for this life to work */}
       <section className="rounded-lg border border-ink/15 bg-white p-4">
         <h2 className="text-sm font-semibold">What the business would need to produce for this life to work</h2>
-        <p className="mt-2 text-sm">
-          Required revenue: <strong>${result.requiredRevenue}</strong> —{" "}
-          {result.requiredVolumeByStream.map((v) => `${v.volume} ${streamLabelById.get(v.streamId) ?? v.streamId}`).join(", ")}
-        </p>
+        {result.requiredRevenue !== null && result.requiredVolumeByStream !== null ? (
+          <p className="mt-2 text-sm">
+            Required revenue: <strong>${result.requiredRevenue}</strong> —{" "}
+            {result.requiredVolumeByStream.map((v) => `${v.volume} ${streamLabelById.get(v.streamId) ?? v.streamId}`).join(", ")}
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-ink/50">
+            Incomplete — this is tied to your life&rsquo;s funding requirement, which hasn&rsquo;t been confirmed yet. Answer
+            the current funding question on the{" "}
+            <Link href="/now" className="font-medium text-accent underline">
+              NOW screen
+            </Link>{" "}
+            to see it.
+          </p>
+        )}
       </section>
 
       {/* Signals — kept separate, never collapsed into one verdict */}

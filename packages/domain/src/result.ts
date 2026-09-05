@@ -47,10 +47,15 @@ export interface ScenarioResult {
   computedAt: ISODate;
 
   actualRevenue: Money | null; // NOW only — measured; null for NEXT/ULTIMATELY
-  requiredEconomicContribution: Money;
+  /**
+   * null when the owner's funding-responsibility question (ScenarioLifeAssumption.
+   * outsideFundingRetained) has never been confirmed — a specific policy fact, never
+   * defaulted/assumed. Every other field below is unaffected and still computes.
+   */
+  requiredEconomicContribution: Money | null;
   weightedContributionMargin: Percent;
-  requiredRevenue: Money; // populated for ALL THREE scenarios, incl. NOW
-  requiredVolumeByStream: { streamId: ID; volume: number }[];
+  requiredRevenue: Money | null;
+  requiredVolumeByStream: { streamId: ID; volume: number }[] | null;
   breakEvenFloor: {
     revenue: Money;
     volumeByStream: { streamId: ID; volume: number }[];
@@ -63,7 +68,8 @@ export interface ScenarioResult {
   requiredRetainedBusinessCapital: RetainedCapitalResult;
   distributableEconomicSurplus: Money; // operatingEconomicSurplus − retained capital total — never sourced elsewhere
   ownerEconomicsResults: OwnerEconomicsResult[];
-  primaryOwnerBenefitVsRequirement: PrimaryOwnerBenefitVsRequirement;
+  /** null when funding responsibility is unconfirmed — there is no requirement figure to compare against. */
+  primaryOwnerBenefitVsRequirement: PrimaryOwnerBenefitVsRequirement | null;
 
   ownerSupportSignal: OwnerSupportSignal; // derived from primaryOwnerBenefitVsRequirement, not revenue
   capacitySignal: CapacitySignal;

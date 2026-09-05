@@ -18,9 +18,17 @@ function owner(overrides: Partial<OwnerEconomics>): OwnerEconomics {
 }
 
 describe("validateOwnershipPercentagesSum100", () => {
-  it("accepts two owners at exactly 60/40", () => {
+  const sameAsOwnership: ScenarioDistributionPolicy = { scenarioId: "s1", rule: "SAME_AS_OWNERSHIP" };
+  const discretionary: ScenarioDistributionPolicy = { scenarioId: "s1", rule: "DISCRETIONARY" };
+
+  it("is skipped entirely for rules that never read ownershipPercent", () => {
+    const owners = [owner({ ownerId: "a", ownershipPercent: "0.6" }), owner({ ownerId: "b", ownershipPercent: "0.5" })];
+    expect(() => validateOwnershipPercentagesSum100(owners, discretionary)).not.toThrow();
+  });
+
+  it("accepts two owners at exactly 60/40 under SAME_AS_OWNERSHIP", () => {
     const owners = [owner({ ownerId: "a", ownershipPercent: "0.6" }), owner({ ownerId: "b", ownershipPercent: "0.4" })];
-    expect(() => validateOwnershipPercentagesSum100(owners)).not.toThrow();
+    expect(() => validateOwnershipPercentagesSum100(owners, sameAsOwnership)).not.toThrow();
   });
 
   it("accepts three owners at 33.33/33.33/33.34 (sums exactly to 100)", () => {
@@ -29,12 +37,12 @@ describe("validateOwnershipPercentagesSum100", () => {
       owner({ ownerId: "b", ownershipPercent: "0.3333" }),
       owner({ ownerId: "c", ownershipPercent: "0.3334" }),
     ];
-    expect(() => validateOwnershipPercentagesSum100(owners)).not.toThrow();
+    expect(() => validateOwnershipPercentagesSum100(owners, sameAsOwnership)).not.toThrow();
   });
 
-  it("rejects 60/50 (sums to 110)", () => {
+  it("rejects 60/50 (sums to 110) under SAME_AS_OWNERSHIP", () => {
     const owners = [owner({ ownerId: "a", ownershipPercent: "0.6" }), owner({ ownerId: "b", ownershipPercent: "0.5" })];
-    expect(() => validateOwnershipPercentagesSum100(owners)).toThrow(ValidationError);
+    expect(() => validateOwnershipPercentagesSum100(owners, sameAsOwnership)).toThrow(ValidationError);
   });
 
   it("rejects three even thirds that fall a cent short (99.99)", () => {
@@ -43,7 +51,17 @@ describe("validateOwnershipPercentagesSum100", () => {
       owner({ ownerId: "b", ownershipPercent: "0.3333" }),
       owner({ ownerId: "c", ownershipPercent: "0.3333" }),
     ];
-    expect(() => validateOwnershipPercentagesSum100(owners)).toThrow(ValidationError);
+    expect(() => validateOwnershipPercentagesSum100(owners, sameAsOwnership)).toThrow(ValidationError);
+  });
+
+  it("rejects unknown (null) ownership under SAME_AS_OWNERSHIP rather than treating it as any particular split", () => {
+    const owners = [owner({ ownerId: "a", ownershipPercent: null }), owner({ ownerId: "b", ownershipPercent: "0.4" })];
+    expect(() => validateOwnershipPercentagesSum100(owners, sameAsOwnership)).toThrow(ValidationError);
+  });
+
+  it("unknown (null) ownership never blocks a rule that doesn't need it", () => {
+    const owners = [owner({ ownerId: "a", ownershipPercent: null }), owner({ ownerId: "b", ownershipPercent: null })];
+    expect(() => validateOwnershipPercentagesSum100(owners, discretionary)).not.toThrow();
   });
 });
 

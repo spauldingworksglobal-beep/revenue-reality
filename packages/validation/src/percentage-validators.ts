@@ -4,10 +4,24 @@ import { sumDecimalStringsExact, decimalStringToScaled } from "./decimal-sum";
 
 const ONE_HUNDRED_PERCENT = decimalStringToScaled("1");
 
-/** Ownership percentages across a scenario's owners must sum to exactly 100%. */
-export function validateOwnershipPercentagesSum100(owners: OwnerEconomics[]): void {
+/**
+ * Ownership percentages must sum to exactly 100% only when the distribution
+ * policy actually consumes them (SAME_AS_OWNERSHIP) — every other rule never
+ * reads ownershipPercent (see resolveDistributionPercent), so unknown or
+ * incomplete ownership never blocks a scenario unless "Same as ownership"
+ * was actually chosen. Mirrors validateDistributionPercentagesSum100's
+ * rule-conditional shape below.
+ */
+export function validateOwnershipPercentagesSum100(owners: OwnerEconomics[], policy: ScenarioDistributionPolicy): void {
+  if (policy.rule !== "SAME_AS_OWNERSHIP") return;
   if (owners.length === 0) return;
-  const sum = sumDecimalStringsExact(owners.map((o) => o.ownershipPercent));
+  if (owners.some((o) => o.ownershipPercent === null)) {
+    throw new ValidationError(
+      "ownershipPercent",
+      "Every owner must have a confirmed ownership percentage before profit can be distributed the same as ownership",
+    );
+  }
+  const sum = sumDecimalStringsExact(owners.map((o) => o.ownershipPercent!));
   if (sum !== ONE_HUNDRED_PERCENT) {
     throw new ValidationError(
       "ownershipPercent",

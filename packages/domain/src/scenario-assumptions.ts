@@ -26,7 +26,14 @@ export interface ScenarioLifeAssumption {
   source: LifeSource;
   lifeRequirement: Money; // Σ life_category amounts for this horizon (security excluded)
   securityRequirement: Money; // Σ security_item amounts for this horizon (life excluded)
-  outsideFundingRetained: OutsideFundingRetained;
+  /**
+   * null when the owner has never confirmed how much of their personal economic
+   * requirement the business is responsible for — genuinely unanswered, never
+   * defaulted to a mode/amount. Outputs that depend on it (Required Revenue,
+   * primaryOwnerBenefitVsRequirement, ownerSupportSignal) become unavailable;
+   * everything else in ScenarioResult is unaffected.
+   */
+  outsideFundingRetained: OutsideFundingRetained | null;
   selectedLifeChanges: string[]; // NEXT only
 }
 

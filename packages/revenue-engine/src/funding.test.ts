@@ -43,6 +43,13 @@ describe("resolveBusinessFundedRequirement", () => {
     expect(formatMoney(byPercent.businessFundedRequirement)).toBe(formatMoney(byAmount.businessFundedRequirement));
   });
 
+  it("outsideFundingRetained null (funding responsibility never confirmed): businessFundedRequirement is null, but totalPersonalEconomicRequirement still computes", () => {
+    const life = lifeAssumption({ outsideFundingRetained: null });
+    const { totalPersonalEconomicRequirement, businessFundedRequirement } = resolveBusinessFundedRequirement(life);
+    expect(formatMoney(totalPersonalEconomicRequirement)).toBe("3200.00");
+    expect(businessFundedRequirement).toBeNull();
+  });
+
   it("rejects both amount and percentOfTotal set on the same figure", () => {
     const life = lifeAssumption({
       outsideFundingRetained: { mode: "AMOUNT", amount: "1200.00", percentOfTotal: "0.2", confidence: "EXACT" },

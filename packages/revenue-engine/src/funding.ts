@@ -4,7 +4,8 @@ import { ONE, type Dec, add, formatMoney, formatPercent, multiply, parseMoney, p
 
 export interface FundingResolution {
   totalPersonalEconomicRequirement: Dec; // lifeRequirement + securityRequirement — the ONLY figure consumed onward
-  businessFundedRequirement: Dec; // totalPersonalEconomicRequirement − outsideFundingRetained, ONE calculation
+  /** null when the owner has never confirmed the business's funding share — genuinely unconfirmed, never defaulted. */
+  businessFundedRequirement: Dec | null;
 }
 
 /**
@@ -34,6 +35,9 @@ export function resolveBusinessFundedAmount(totalPersonalEconomicRequirement: De
  */
 export function resolveBusinessFundedRequirement(life: ScenarioLifeAssumption): FundingResolution {
   const totalPersonalEconomicRequirement = add(parseMoney(life.lifeRequirement), parseMoney(life.securityRequirement));
+  if (life.outsideFundingRetained === null) {
+    return { totalPersonalEconomicRequirement, businessFundedRequirement: null };
+  }
   const businessFundedRequirement = resolveBusinessFundedAmount(totalPersonalEconomicRequirement, life.outsideFundingRetained);
   return { totalPersonalEconomicRequirement, businessFundedRequirement };
 }

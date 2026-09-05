@@ -23,6 +23,12 @@ describe("resolveDistributionPercent", () => {
     expect(formatPercent(resolveDistributionPercent(withStrayCustom, owners, policy)!)).toBe("0.7");
   });
 
+  it("SAME_AS_OWNERSHIP with unknown (null) ownershipPercent has no resolvable percentage — never assumed, never equal-split", () => {
+    const owners = [owner({ ownerId: "a", ownershipPercent: null }), owner({ ownerId: "b", ownershipPercent: null })];
+    const policy: ScenarioDistributionPolicy = { scenarioId: "s1", rule: "SAME_AS_OWNERSHIP" };
+    expect(resolveDistributionPercent(owners[0]!, owners, policy)).toBeNull();
+  });
+
   it("EQUAL_SPLIT ignores ownership entirely", () => {
     const owners = [owner({ ownerId: "a", ownershipPercent: "0.7" }), owner({ ownerId: "b", ownershipPercent: "0.3" }), owner({ ownerId: "c", ownershipPercent: "0" })];
     const policy: ScenarioDistributionPolicy = { scenarioId: "s1", rule: "EQUAL_SPLIT" };

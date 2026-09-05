@@ -15,11 +15,13 @@ import type {
   RevenueStream,
   ScenarioDistributionPolicy,
   ScenarioEngineInput,
+  ScenarioResult,
   ScenarioRevenueStream,
   SecurityItem,
   VariableCostItem,
 } from "@revenue-reality/domain";
-import { resolveOwnershipSplitStatus, validateMixWeightsSum100 } from "@revenue-reality/validation";
+import { validateMixWeightsSum100 } from "@revenue-reality/validation";
+import { assembleConfidenceFlags } from "./confidence";
 import type { BusinessFundedConfirmation } from "./funding";
 import { deriveOutsideFundingRetained } from "./funding";
 import { computeLifeRequirement, computeSecurityRequirement, computeTotalPersonalEconomicRequirement } from "./life-reality";
@@ -63,23 +65,28 @@ export interface BuildNowScenarioInputParams {
   capitalItems: CapitalRequirementItem[];
   currentCategories: LifeCategory[];
   currentSecurity: SecurityItem[];
+  /**
+   * null when the owner has never confirmed how much of their personal
+   * economic requirement the business is responsible for. This no longer
+   * blocks the whole scenario — it flows straight through to
+   * ScenarioLifeAssumption.outsideFundingRetained as null, and the engine
+   * (packages/revenue-engine/src/scenario.ts) leaves Required Revenue and
+   * the owner-benefit-vs-requirement comparison unavailable as a result.
+   */
   currentFundingConfirmation: BusinessFundedConfirmation | null;
   restructureDate: ISODate | null;
   actualRevenue: ConfidenceValue<Money> | null;
 }
 
-export type NowScenarioMissingReason =
-  | "ACTUAL_REVENUE"
-  | "CURRENT_FUNDING_CONFIRMATION"
-  | "NO_USABLE_REVENUE_STREAM";
+export type NowScenarioMissingReason = "ACTUAL_REVENUE" | "NO_USABLE_REVENUE_STREAM";
 
 export type NowScenarioAssemblyResult =
   | {
       status: "READY";
       input: ScenarioEngineInput;
-      /** True when one or more owners' ownershipPercent was unknown/invalid and an equal split was substituted as a placeholder. */
-      ownershipSplitFallbackApplied: boolean;
-      /** True when one or more included streams' sales-mix share was unknown (or didn't sum to 100%) and an equal split was substituted. */
+      /** Owners whose ownership share is unconfirmed — passed through as null, never assumed/equal-split. Empty when every owner's ownership is known. */
+      unknownOwnershipOwnerIds: ID[];
+      /** True when one or more included streams' sales-mix share was unknown (or didn't sum to 100%) and an equal-weight modeling ASSUMPTION was substituted — see withNowResultCaveats. */
       mixWeightFallbackApplied: boolean;
       /** Active streams excluded from the calculation because price and/or Cost of Delivery haven't been entered yet. */
       excludedStreamIds: ID[];
@@ -133,20 +140,29 @@ function buildScenarioRevenueStream(
  * store state. Pure and side-effect free — the only place this orchestration
  * happens, so the UI never re-derives the waterfall itself.
  *
- * Never fabricates a specific dollar figure. Two placeholders are the
- * exception, and both are structural (distributing a known total across
- * unknown shares), matching the precedent already set for incomplete sales
- * mix in stream-economics.ts: an unresolved ownership split or sales mix
- * falls back to an equal share rather than blocking, and the caller is told
- * so it can surface the assumption. A missing actual revenue figure or an
- * unanswered current-funding question is NOT given a placeholder — those are
- * specific policy/measurement facts, not shares of a known total — so the
- * scenario is reported INCOMPLETE instead of guessing one.
+ * Never fabricates a specific dollar figure or a confirmed split:
+ *  - Unknown ownership is passed through as null and stays null — no
+ *    equal-split placeholder. It only blocks the one calculation that
+ *    actually reads it (a SAME_AS_OWNERSHIP distribution rule); every other
+ *    output computes normally (see packages/validation's
+ *    validateOwnershipPercentagesSum100, now conditional on the rule).
+ *  - An unresolved sales mix across multiple streams gets a temporary
+ *    equal-weight MODELING ASSUMPTION (never a claimed fact) — surfaced via
+ *    mixWeightFallbackApplied and pushed into the result's confidenceFlags
+ *    by withNowResultCaveats below. It is never written back into the
+ *    owner's own stream inputs, so it can never masquerade as something the
+ *    owner actually entered.
+ *  - A missing actual revenue figure, or no stream with both a price and a
+ *    Cost of Delivery, are genuine hard requirements — the scenario is
+ *    reported INCOMPLETE rather than guessing either.
+ *  - An unconfirmed funding-responsibility answer is NOT a hard requirement
+ *    (it doesn't block margins, break-even, or owner cash) — it flows
+ *    through as null and only the life-linked outputs it drives become
+ *    unavailable, at the engine level (see scenario.ts).
  */
 export function buildNowScenarioInput(params: BuildNowScenarioInputParams): NowScenarioAssemblyResult {
   const missing: NowScenarioMissingReason[] = [];
   if (params.actualRevenue === null) missing.push("ACTUAL_REVENUE");
-  if (params.currentFundingConfirmation === null) missing.push("CURRENT_FUNDING_CONFIRMATION");
 
   const streamInputById = new Map(params.streamInputs.map((s) => [s.streamId, s]));
   const usableStreamInputs = params.activeStreams
@@ -186,16 +202,8 @@ export function buildNowScenarioInput(params: BuildNowScenarioInputParams): NowS
   });
   if (streams.length === 0) return { status: "INCOMPLETE", missing: ["NO_USABLE_REVENUE_STREAM"] };
 
-  // --- ownership split: use the real split only when it's complete and valid ---
-  const ownershipStatus = resolveOwnershipSplitStatus(params.owners);
-  let ownershipSplitFallbackApplied = false;
-  let ownershipPercents: Percent[];
-  if (ownershipStatus === "COMPLETE_VALID") {
-    ownershipPercents = params.owners.map((o) => o.ownershipPercent!.value);
-  } else {
-    ownershipPercents = computeEqualMixWeights(params.owners.length);
-    ownershipSplitFallbackApplied = true;
-  }
+  // --- ownership: pass through exactly what's known. Unknown stays unknown — never assumed. ---
+  const unknownOwnershipOwnerIds = params.owners.filter((o) => o.ownershipPercent === null).map((o) => o.id);
 
   const distributionPolicy: ScenarioDistributionPolicy = params.distributionPolicy ?? {
     scenarioId: params.scenarioId,
@@ -218,14 +226,14 @@ export function buildNowScenarioInput(params: BuildNowScenarioInputParams): NowS
     };
   });
 
-  const ownerEconomics: OwnerEconomics[] = params.owners.map((owner, i) => {
+  const ownerEconomics: OwnerEconomics[] = params.owners.map((owner) => {
     const stored = ownerInputById.get(owner.id);
     const distributionPercent =
       distributionPolicy.rule === "CUSTOM_PERCENTAGE" ? (params.distributionPercents[owner.id] ?? null) : null;
     return {
       scenarioId: params.scenarioId,
       ownerId: owner.id,
-      ownershipPercent: ownershipPercents[i]!,
+      ownershipPercent: owner.ownershipPercent?.value ?? null,
       distributionPercent,
       isPrimaryRespondent: owner.isPrimaryRespondent,
       cashReceived: stored?.cashReceived ?? undefined,
@@ -235,7 +243,10 @@ export function buildNowScenarioInput(params: BuildNowScenarioInputParams): NowS
   const lifeReq = computeLifeRequirement(params.currentCategories, "CURRENT");
   const securityReq = computeSecurityRequirement(params.currentSecurity, "CURRENT");
   const totalPersonalEconomicRequirement = computeTotalPersonalEconomicRequirement(lifeReq.monthly, securityReq.monthly);
-  const outsideFundingRetained = deriveOutsideFundingRetained(totalPersonalEconomicRequirement, params.currentFundingConfirmation!);
+  const outsideFundingRetained =
+    params.currentFundingConfirmation === null
+      ? null
+      : deriveOutsideFundingRetained(totalPersonalEconomicRequirement, params.currentFundingConfirmation);
 
   const input: ScenarioEngineInput = {
     scenarioType: "NOW",
@@ -267,5 +278,26 @@ export function buildNowScenarioInput(params: BuildNowScenarioInputParams): NowS
     actualRevenue: params.actualRevenue!.value,
   };
 
-  return { status: "READY", input, ownershipSplitFallbackApplied, mixWeightFallbackApplied, excludedStreamIds };
+  return { status: "READY", input, unknownOwnershipOwnerIds, mixWeightFallbackApplied, excludedStreamIds };
+}
+
+/**
+ * Post-processes a ScenarioResult with the caveats buildNowScenarioInput's
+ * READY variant already knows about — currently just the sales-mix
+ * modeling assumption, surfaced as an explicit confidence flag so it can
+ * never be mistaken for a known fact. Does not touch runScenario itself:
+ * this is orchestration, not a new calculation.
+ */
+export function withNowResultCaveats(
+  result: ScenarioResult,
+  assembly: Extract<NowScenarioAssemblyResult, { status: "READY" }>,
+): ScenarioResult {
+  if (!assembly.mixWeightFallbackApplied) return result;
+  return {
+    ...result,
+    confidenceFlags: assembleConfidenceFlags([
+      ...result.confidenceFlags,
+      { field: "salesMix", confidence: "ROUGH_ESTIMATE" },
+    ]),
+  };
 }

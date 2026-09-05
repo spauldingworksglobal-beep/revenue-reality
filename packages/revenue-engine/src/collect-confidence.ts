@@ -4,7 +4,10 @@ import type { ConfidenceFlag, ScenarioEngineInput } from "@revenue-reality/domai
 export function collectInputConfidenceFlags(input: ScenarioEngineInput): ConfidenceFlag[] {
   const flags: ConfidenceFlag[] = [];
 
-  flags.push({ field: "lifeAssumption.outsideFundingRetained", confidence: input.lifeAssumption.outsideFundingRetained.confidence });
+  flags.push({
+    field: "lifeAssumption.outsideFundingRetained",
+    confidence: input.lifeAssumption.outsideFundingRetained ? input.lifeAssumption.outsideFundingRetained.confidence : "INCOMPLETE",
+  });
   flags.push({ field: "timeAssumption.availableHoursWeek", confidence: input.timeAssumption.availableHoursWeek.confidence });
   flags.push({ field: "timeAssumption.businessHoursWeek", confidence: input.timeAssumption.businessHoursWeek.confidence });
 
@@ -38,6 +41,9 @@ export function collectInputConfidenceFlags(input: ScenarioEngineInput): Confide
   }
 
   for (const owner of input.ownerEconomics) {
+    if (owner.ownershipPercent === null) {
+      flags.push({ field: `ownerEconomics.${owner.ownerId}.ownershipPercent`, confidence: "INCOMPLETE" });
+    }
     if (owner.cashReceived?.mode === "UNCLASSIFIED_TOTAL") {
       flags.push({
         field: `ownerEconomics.${owner.ownerId}.cashReceived`,
