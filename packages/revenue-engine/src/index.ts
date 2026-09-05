@@ -16,5 +16,6 @@ export * from "./collect-confidence";
 export * from "./scenario";
 export * from "./now-assembly";
 export * from "./next-assembly";
+export * from "./ultimately-assembly";
 export * from "./scenario-stream-assembly";
 export * from "./delegation";

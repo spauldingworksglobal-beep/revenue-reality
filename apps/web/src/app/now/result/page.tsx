@@ -166,6 +166,14 @@ export default function NowResultPage() {
     >
       <EphemeralNotice />
 
+      <p className="text-xs text-ink/50">
+        Prefer to skip the intermediate step?{" "}
+        <Link href="/ultimately" className="font-medium text-accent underline">
+          Go straight to ULTIMATELY
+        </Link>{" "}
+        — it will start from this NOW model instead of NEXT.
+      </p>
+
       {(fundingUnconfirmed || assembly.unknownOwnershipOwnerIds.length > 0 || assembly.mixWeightFallbackApplied || assembly.excludedStreamIds.length > 0) && (
         <div className="flex flex-col gap-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
           {fundingUnconfirmed && (

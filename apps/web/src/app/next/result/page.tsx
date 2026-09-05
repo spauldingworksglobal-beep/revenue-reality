@@ -246,6 +246,8 @@ export default function NextResultPage() {
       eyebrow="NEXT · Result"
       title={`What ${businessName.trim() === "" ? "this business" : businessName} must become for this NEXT step`}
       backHref="/next/capacity"
+      nextHref="/ultimately"
+      nextLabel="Build the ULTIMATELY model"
     >
       <EphemeralNotice />
 

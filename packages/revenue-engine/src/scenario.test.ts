@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { hcfNowInput } from "./fixtures/hcf";
 import { completeBusinessNowInput } from "./fixtures/complete-business";
 import { completeNextInput } from "./fixtures/complete-next";
+import { completeUltimatelyInput, ownerOperatedUltimatelyInput } from "./fixtures/complete-ultimately";
 import { runScenario } from "./scenario";
 
 describe("runScenario — HCF acceptance fixture (Build Spec §20), known facts only", () => {
@@ -348,6 +349,86 @@ describe("runScenario — complete NEXT acceptance fixture (fully synthetic, dis
     const input = completeNextInput();
     const meta = { revisionId: "r", computedAt: "2026-09-04T00:00:00.000Z" };
     expect(runScenario(input, meta)).toEqual(runScenario(input, meta));
+  });
+});
+
+describe("runScenario — complete ULTIMATELY acceptance fixture (fully synthetic, distinct from NOW, NEXT, and HCF)", () => {
+  const result = runScenario(completeUltimatelyInput(), { revisionId: "rev-ultimately", computedAt: "2026-09-05T00:00:00.000Z" });
+
+  it("solves a real Required Revenue — never entered as a goal, always engine-derived, using the exact same engine as NOW/NEXT", () => {
+    expect(result.requiredRevenue).not.toBeNull();
+    expect(Number(result.requiredRevenue)).toBeGreaterThan(0);
+    expect(result.actualRevenue).toBeNull(); // ULTIMATELY never has an actual
+  });
+
+  it("folds both delegation costs and both recurring and one-time mature capital into the same waterfall as NOW/NEXT", () => {
+    const leaner = completeUltimatelyInput();
+    leaner.delegationItems = [];
+    leaner.capitalItems = [];
+    const leanerResult = runScenario(leaner, { revisionId: "r" });
+    expect(Number(leanerResult.requiredRevenue)).toBeLessThan(Number(result.requiredRevenue));
+  });
+
+  it("computes the primary owner's total benefit as exactly their targeted labor comp plus their percentage share of distributable surplus — self-consistent with the backward solve, same invariant as NOW/NEXT", () => {
+    const primary = result.ownerEconomicsResults!.find((o) => o.ownerId === "owner-1")!;
+    expect(primary.totalOwnerEconomicBenefit).toBe(result.primaryOwnerBenefitVsRequirement!.businessFundedPersonalEconomicRequirement);
+    expect(result.primaryOwnerBenefitVsRequirement!.gap).toBe("0.00");
+  });
+
+  it("is deterministic", () => {
+    const input = completeUltimatelyInput();
+    const meta = { revisionId: "r", computedAt: "2026-09-05T00:00:00.000Z" };
+    expect(runScenario(input, meta)).toEqual(runScenario(input, meta));
+  });
+});
+
+describe("runScenario — NEXT vs. ULTIMATELY: the mature model materially changes the business without silently changing the owner's personal requirement", () => {
+  const nextResult = runScenario(completeNextInput(), { revisionId: "r-next" });
+  const ultimatelyResult = runScenario(completeUltimatelyInput(), { revisionId: "r-ultimately" });
+
+  it("owner hours materially decrease from NEXT to ULTIMATELY", () => {
+    const nextHours = completeNextInput().timeAssumption.businessHoursWeek.value;
+    const ultimatelyHours = completeUltimatelyInput().timeAssumption.businessHoursWeek.value;
+    expect(ultimatelyHours).toBeLessThan(nextHours);
+  });
+
+  it("replacement/delegation labor increases (NEXT has one $300/mo item, ULTIMATELY adds a second $800/mo item) — Required Revenue rises accordingly, it is never masked by the owner working fewer hours", () => {
+    const leanerUltimately = completeUltimatelyInput();
+    leanerUltimately.delegationItems = completeUltimatelyInput().delegationItems.filter((d) => d.id === "bookkeeping");
+    const leanerResult = runScenario(leanerUltimately, { revisionId: "r" });
+    expect(Number(ultimatelyResult.requiredRevenue)).toBeGreaterThan(Number(leanerResult.requiredRevenue));
+  });
+
+  it("the primary owner's personal/business-funded requirement is a wholly separate fact from NEXT's — never silently derived from hours or delegation", () => {
+    // NEXT: $3,700 total business-funded requirement. ULTIMATELY: $4,400 —
+    // a materially different, explicitly-entered Intended figure, not a
+    // side effect of the hours or delegation changes above.
+    expect(nextResult.primaryOwnerBenefitVsRequirement!.businessFundedPersonalEconomicRequirement).toBe("3700.00");
+    expect(ultimatelyResult.primaryOwnerBenefitVsRequirement!.businessFundedPersonalEconomicRequirement).toBe("4400.00");
+  });
+
+  it("ownership return becomes a larger share of the primary owner's total benefit as their labor compensation shrinks", () => {
+    const nextPrimary = nextResult.ownerEconomicsResults!.find((o) => o.ownerId === "owner-1")!;
+    const ultimatelyPrimary = ultimatelyResult.ownerEconomicsResults!.find((o) => o.ownerId === "owner-1")!;
+    const nextDistributionShare = Number(nextPrimary.profitDistribution) / Number(nextPrimary.totalOwnerEconomicBenefit);
+    const ultimatelyDistributionShare = Number(ultimatelyPrimary.profitDistribution) / Number(ultimatelyPrimary.totalOwnerEconomicBenefit);
+    expect(ultimatelyDistributionShare).toBeGreaterThan(nextDistributionShare);
+  });
+
+  it("Required Revenue increases appropriately from NEXT to ULTIMATELY given the larger personal requirement and added delegation cost", () => {
+    expect(Number(ultimatelyResult.requiredRevenue)).toBeGreaterThan(Number(nextResult.requiredRevenue));
+  });
+});
+
+describe("runScenario — mature owner-operated ULTIMATELY model (business intent \"Mostly me\")", () => {
+  it("does not assume every mature business must become owner-independent — the owner can intentionally continue doing substantial work with no delegation at all", () => {
+    const result = runScenario(ownerOperatedUltimatelyInput(), { revisionId: "r" });
+    expect(result.requiredRevenue).not.toBeNull();
+    const primary = result.ownerEconomicsResults!.find((o) => o.ownerId === "owner-1")!;
+    // A real, substantial paycheck for real, substantial hours — not
+    // reduced to $0 just because ULTIMATELY defaults toward delegation.
+    expect(Number(primary.laborCompensation)).toBeGreaterThan(0);
+    expect(result.timeSignal).toBe("FITS"); // 25hrs/week against 30 available
   });
 });
 
