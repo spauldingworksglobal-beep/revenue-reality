@@ -27,7 +27,7 @@ export interface Scenario {
   ownerInputs: OwnerInput[];
   distributionPolicy: ScenarioDistributionPolicy;
   ownerEconomics: OwnerEconomics[];
-  delegationItems: DelegationItem[]; // ULTIMATELY only — see ULT-3
+  delegationItems: DelegationItem[]; // NEXT and ULTIMATELY only — empty for NOW, which never delegates
   capitalItems: CapitalRequirementItem[];
   capacity: Capacity;
 }

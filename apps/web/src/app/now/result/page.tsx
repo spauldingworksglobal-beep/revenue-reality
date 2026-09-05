@@ -161,6 +161,8 @@ export default function NowResultPage() {
       eyebrow="NOW · Result"
       title={`What ${businessName.trim() === "" ? "this business" : businessName} actually produces today`}
       backHref="/now/retention"
+      nextHref="/next"
+      nextLabel="Build the NEXT model"
     >
       <EphemeralNotice />
 

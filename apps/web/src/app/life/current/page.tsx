@@ -20,6 +20,7 @@ export default function CurrentLifePage() {
         kind: "OTHER",
         label: newLabel.trim(),
         currentAmount: null,
+        nextAmount: null,
         intendedAmount: null,
         cadence: "MONTHLY",
         changeType: "KEEP",

@@ -1,6 +1,5 @@
 import type {
   CapitalRequirementItem,
-  CogsInput,
   ConfidenceValue,
   ID,
   ISODate,
@@ -16,27 +15,17 @@ import type {
   ScenarioDistributionPolicy,
   ScenarioEngineInput,
   ScenarioResult,
-  ScenarioRevenueStream,
   SecurityItem,
-  VariableCostItem,
 } from "@revenue-reality/domain";
-import { validateMixWeightsSum100 } from "@revenue-reality/validation";
 import { assembleConfidenceFlags } from "./confidence";
 import type { BusinessFundedConfirmation } from "./funding";
 import { deriveOutsideFundingRetained } from "./funding";
 import { computeLifeRequirement, computeSecurityRequirement, computeTotalPersonalEconomicRequirement } from "./life-reality";
-import { formatMoney, formatPercent } from "./money";
-import { computeEqualMixWeights, resolveStreamEconomics } from "./stream-economics";
+import { formatMoney } from "./money";
+import { resolveScenarioStreams, type ScenarioStreamAssemblyInput } from "./scenario-stream-assembly";
 
 /** Structurally identical to now-store.tsx's NowStreamInput — kept independent so this package never depends on apps/web. */
-export interface NowStreamAssemblyInput {
-  streamId: ID;
-  price: ConfidenceValue<Money> | null;
-  volume: ConfidenceValue<number> | null;
-  mixWeightOverride: Percent | null;
-  cogs: CogsInput | null;
-  otherVariableCosts: VariableCostItem[];
-}
+export type NowStreamAssemblyInput = ScenarioStreamAssemblyInput;
 
 /** Structurally identical to now-store.tsx's NowOwnerInput. */
 export interface NowOwnerAssemblyInput {
@@ -93,48 +82,6 @@ export type NowScenarioAssemblyResult =
     }
   | { status: "INCOMPLETE"; missing: NowScenarioMissingReason[] };
 
-function buildScenarioRevenueStream(
-  scenarioId: ID,
-  input: NowStreamAssemblyInput,
-  mixWeight: Percent,
-): ScenarioRevenueStream | null {
-  if (input.price === null || input.cogs === null) return null;
-  try {
-    const resolved = resolveStreamEconomics({
-      scenarioId,
-      streamId: input.streamId,
-      priceOrAvgValue: input.price,
-      volume: input.volume,
-      mixWeight,
-      cogs: input.cogs,
-      cogsPerUnit: "0.00",
-      otherVariableCosts: input.otherVariableCosts,
-      otherVariableCostPerUnit: "0.00",
-      grossProfitPerUnit: "0.00",
-      grossMargin: "0",
-      contributionPerUnit: "0.00",
-      contributionMargin: "0",
-    });
-    return {
-      scenarioId,
-      streamId: input.streamId,
-      priceOrAvgValue: input.price,
-      volume: input.volume,
-      mixWeight,
-      cogs: input.cogs,
-      cogsPerUnit: formatMoney(resolved.cogsPerUnit),
-      otherVariableCosts: input.otherVariableCosts,
-      otherVariableCostPerUnit: formatMoney(resolved.otherVariableCostPerUnit),
-      grossProfitPerUnit: formatMoney(resolved.grossProfitPerUnit),
-      grossMargin: formatPercent(resolved.grossMargin),
-      contributionPerUnit: formatMoney(resolved.contributionPerUnit),
-      contributionMargin: formatPercent(resolved.contributionMargin),
-    };
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Assembles a NOW ScenarioEngineInput from Life/Time/Business/Now ephemeral
  * store state. Pure and side-effect free — the only place this orchestration
@@ -165,42 +112,10 @@ export function buildNowScenarioInput(params: BuildNowScenarioInputParams): NowS
   if (params.actualRevenue === null) missing.push("ACTUAL_REVENUE");
 
   const streamInputById = new Map(params.streamInputs.map((s) => [s.streamId, s]));
-  const usableStreamInputs = params.activeStreams
-    .map((s) => streamInputById.get(s.id))
-    .filter((s): s is NowStreamAssemblyInput => s !== undefined && s.price !== null && s.cogs !== null);
-  const excludedStreamIds = params.activeStreams.map((s) => s.id).filter((id) => !usableStreamInputs.some((s) => s.streamId === id));
+  const streamAssembly = resolveScenarioStreams(params.scenarioId, params.activeStreams.map((s) => s.id), streamInputById);
 
-  if (usableStreamInputs.length === 0) missing.push("NO_USABLE_REVENUE_STREAM");
-
+  if (streamAssembly.streams.length === 0) missing.push("NO_USABLE_REVENUE_STREAM");
   if (missing.length > 0) return { status: "INCOMPLETE", missing };
-
-  // --- sales mix: use entered shares only if every usable stream has one AND they validate to exactly 100% ---
-  let mixWeights: Percent[];
-  let mixWeightFallbackApplied = false;
-  if (usableStreamInputs.length === 1) {
-    mixWeights = ["1"];
-  } else if (usableStreamInputs.every((s) => s.mixWeightOverride !== null)) {
-    const candidateWeights = usableStreamInputs.map((s) => s.mixWeightOverride!);
-    try {
-      validateMixWeightsSum100(
-        usableStreamInputs.map((s, i) => ({ mixWeight: candidateWeights[i]! }) as ScenarioRevenueStream),
-      );
-      mixWeights = candidateWeights;
-    } catch {
-      mixWeights = computeEqualMixWeights(usableStreamInputs.length);
-      mixWeightFallbackApplied = true;
-    }
-  } else {
-    mixWeights = computeEqualMixWeights(usableStreamInputs.length);
-    mixWeightFallbackApplied = true;
-  }
-
-  const streams: ScenarioRevenueStream[] = [];
-  usableStreamInputs.forEach((streamInput, i) => {
-    const built = buildScenarioRevenueStream(params.scenarioId, streamInput, mixWeights[i]!);
-    if (built) streams.push(built);
-  });
-  if (streams.length === 0) return { status: "INCOMPLETE", missing: ["NO_USABLE_REVENUE_STREAM"] };
 
   // --- ownership: pass through exactly what's known. Unknown stays unknown — never assumed. ---
   const unknownOwnershipOwnerIds = params.owners.filter((o) => o.ownershipPercent === null).map((o) => o.id);
@@ -266,7 +181,7 @@ export function buildNowScenarioInput(params: BuildNowScenarioInputParams): NowS
       otherTimeClaims: params.otherTimeClaims,
       lifePriorityReservations: [],
     },
-    streams,
+    streams: streamAssembly.streams,
     operatingCosts: params.operatingCosts,
     ownerInputs,
     distributionPolicy,
@@ -278,7 +193,13 @@ export function buildNowScenarioInput(params: BuildNowScenarioInputParams): NowS
     actualRevenue: params.actualRevenue!.value,
   };
 
-  return { status: "READY", input, unknownOwnershipOwnerIds, mixWeightFallbackApplied, excludedStreamIds };
+  return {
+    status: "READY",
+    input,
+    unknownOwnershipOwnerIds,
+    mixWeightFallbackApplied: streamAssembly.mixWeightFallbackApplied,
+    excludedStreamIds: streamAssembly.excludedStreamIds,
+  };
 }
 
 /**

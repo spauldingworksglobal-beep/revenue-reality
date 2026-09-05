@@ -15,6 +15,7 @@ import {
 import { collectInputConfidenceFlags } from "./collect-confidence";
 import { assembleConfidenceFlags } from "./confidence";
 import { sumRequiredRetainedBusinessCapital } from "./capital";
+import { sumKnownDelegationCost } from "./delegation";
 import {
   computeContributionEconomics,
   computeDistributableEconomicSurplus,
@@ -64,6 +65,13 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
   const knownOpex = sumKnownOperatingCost(input.operatingCosts);
   const retainedCapital = sumRequiredRetainedBusinessCapital(input.capitalItems);
 
+  // --- delegation: a known replacement cost is a real recurring cost of the
+  // model (NEXT/ULTIMATELY) and is treated exactly like known operating cost
+  // everywhere that figure drives the waterfall. An item with no known cost
+  // contributes nothing (never a guessed market rate) — see delegation.ts.
+  const knownDelegation = sumKnownDelegationCost(input.delegationItems);
+  const knownRecurringCost = add(knownOpex.monthly, knownDelegation.monthly);
+
   // --- funding responsibility (the one calculation, §01/§04 of the architecture doc) ---
   const funding = resolveBusinessFundedRequirement(input.lifeAssumption);
 
@@ -79,6 +87,9 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
   const allOwnersLaborComp = input.ownerEconomics.map((o) => cashByOwner.get(o.ownerId)!.laborCompensation);
 
   const confidenceFlags = collectInputConfidenceFlags(input);
+  if (knownDelegation.isPartial) {
+    confidenceFlags.push({ field: "delegationItems", confidence: "INCOMPLETE" });
+  }
 
   // --- backward solve: only possible once funding responsibility is confirmed ---
   // businessFundedRequirement === null means the owner has never answered "how much
@@ -98,7 +109,7 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
       primaryOwnerTargetLaborCompensation: primaryCash.laborCompensation,
       primaryOwnerDistributionPercent: primaryDistPercent,
       manualRequiredDistributableSurplus: null,
-      knownOperatingCostMonthly: knownOpex.monthly,
+      knownOperatingCostMonthly: knownRecurringCost,
       allOwnersLaborCompensation: allOwnersLaborComp,
       requiredRetainedCapitalTotal: retainedCapital.total,
       weightedContributionMargin,
@@ -111,7 +122,7 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
       // Graceful degradation (never block): a floor covering only known costs,
       // labor, and retention — explicitly NOT the owner's profit distribution
       // need, since that couldn't be resolved. Flagged INCOMPLETE, not hidden.
-      requiredEconomicContribution = add(knownOpex.monthly, retainedCapital.total, ...allOwnersLaborComp);
+      requiredEconomicContribution = add(knownRecurringCost, retainedCapital.total, ...allOwnersLaborComp);
       requiredRevenue = divide(requiredEconomicContribution, weightedContributionMargin);
       confidenceFlags.push({ field: "primaryOwnerEconomics.profitDistribution", confidence: "INCOMPLETE" });
     }
@@ -132,7 +143,7 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
   }
 
   const contributionEconomics = computeContributionEconomics(forwardRevenue, weightedContributionMargin);
-  const operatingEconomicSurplus = computeOperatingEconomicSurplus(contributionEconomics, knownOpex.monthly, ownerCashOutflows);
+  const operatingEconomicSurplus = computeOperatingEconomicSurplus(contributionEconomics, knownRecurringCost, ownerCashOutflows);
   const distributableEconomicSurplus = computeDistributableEconomicSurplus(operatingEconomicSurplus, retainedCapital.total);
 
   const ownerEconomicsResults: OwnerEconomicsResult[] = input.ownerEconomics.map((owner) => {
@@ -197,7 +208,7 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
   }
 
   const requiredVolumeByStream = requiredRevenue === null ? null : computeRequiredVolume(requiredRevenue, streamEconomics);
-  const breakEven = computeBreakEvenFloor(knownOpex.monthly, weightedContributionMargin, streamEconomics);
+  const breakEven = computeBreakEvenFloor(knownRecurringCost, weightedContributionMargin, streamEconomics);
 
   const capacitySignal = computeCapacitySignal(input.capacity);
   const timeSignal = computeTimeSignal(input.timeAssumption);

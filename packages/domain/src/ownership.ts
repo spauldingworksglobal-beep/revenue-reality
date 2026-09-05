@@ -61,7 +61,7 @@ export interface OwnerInput {
   // Ownership Economics + Distribution Waterfall exists to fix.
 }
 
-/** ULT-3: "what work should no longer depend on you?" — user-entered cost or explicitly incomplete, never a looked-up market rate. */
+/** "What work should no longer depend on you?" (NEXT and ULTIMATELY) — user-entered cost or explicitly incomplete, never a looked-up market rate. */
 export interface DelegationItem {
   id: ID;
   scenarioId: ID;

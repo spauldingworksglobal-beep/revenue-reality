@@ -30,6 +30,7 @@ function seedCategories(): LifeCategory[] {
     kind,
     label,
     currentAmount: null,
+    nextAmount: null,
     intendedAmount: null,
     cadence: "MONTHLY" as const,
     changeType: "KEEP" as const,
@@ -43,6 +44,7 @@ function seedSecurity(): SecurityItem[] {
     kind,
     label,
     currentAmount: null,
+    nextAmount: null,
     intendedAmount: null,
     cadence: "MONTHLY" as const,
   }));

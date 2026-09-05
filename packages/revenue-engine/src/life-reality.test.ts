@@ -8,6 +8,8 @@ import {
   computeSecurityRequirement,
   computeTotalPersonalEconomicRequirement,
   resolveDeferredNeedsContribution,
+  resolveNextLifeCategories,
+  resolveNextSecurityItems,
 } from "./life-reality";
 import { formatMoney } from "./money";
 
@@ -18,6 +20,7 @@ function category(overrides: Partial<LifeCategory>): LifeCategory {
     kind: "HOUSING",
     label: "Rent",
     currentAmount: { value: "1800.00", confidence: "EXACT" },
+    nextAmount: null,
     intendedAmount: null,
     cadence: "MONTHLY",
     changeType: "KEEP",
@@ -32,6 +35,7 @@ function security(overrides: Partial<SecurityItem>): SecurityItem {
     kind: "EMERGENCY_SAVINGS",
     label: "Emergency fund",
     currentAmount: { value: "200.00", confidence: "STRONG_ESTIMATE" },
+    nextAmount: null,
     intendedAmount: null,
     cadence: "MONTHLY",
     ...overrides,
@@ -79,6 +83,24 @@ describe("computeLifeRequirement", () => {
   it("normalizes an annual/irregular obligation to its monthly share", () => {
     const categories = [category({ currentAmount: { value: "1200.00", confidence: "EXACT" }, cadence: "ANNUALLY" })];
     expect(formatMoney(computeLifeRequirement(categories, "CURRENT").monthly)).toBe("100.00");
+  });
+
+  it("reads the NEXT amount for the NEXT horizon — a third lane distinct from CURRENT and INTENDED", () => {
+    const categories = [
+      category({
+        currentAmount: { value: "1800.00", confidence: "EXACT" },
+        nextAmount: { value: "1700.00", confidence: "STRONG_ESTIMATE" },
+        intendedAmount: { value: "1500.00", confidence: "STRONG_ESTIMATE" },
+      }),
+    ];
+    expect(formatMoney(computeLifeRequirement(categories, "NEXT").monthly)).toBe("1700.00");
+  });
+
+  it("a category NEXT hasn't addressed yet is missing under the NEXT horizon, not silently zero", () => {
+    const categories = [category({ nextAmount: null })];
+    const result = computeLifeRequirement(categories, "NEXT");
+    expect(formatMoney(result.monthly)).toBe("0.00");
+    expect(result.isPartial).toBe(true);
   });
 });
 
@@ -259,5 +281,67 @@ describe("buildIntendedSecurityItems", () => {
 
   it("throws when a change references a current security item that doesn't exist", () => {
     expect(() => buildIntendedSecurityItems("lp1", current, [{ currentSecurityId: "nonexistent", changeType: "KEEP" }])).toThrow(RangeError);
+  });
+});
+
+describe("resolveNextLifeCategories", () => {
+  const current = [
+    category({ id: "housing", kind: "HOUSING", currentAmount: { value: "2000.00", confidence: "EXACT" } }),
+    category({ id: "emergency-fund", kind: "OTHER", label: "Emergency savings", currentAmount: { value: "0.00", confidence: "EXACT" } }),
+    category({ id: "travel", kind: "OTHER", label: "Travel", currentAmount: { value: "0.00", confidence: "EXACT" } }),
+  ];
+  const intended = buildIntendedLifeCategories("lp1", current, [
+    { currentCategoryId: "housing", changeType: "INCREASE", newAmount: { value: "2500.00", confidence: "STRONG_ESTIMATE" } },
+    { currentCategoryId: "emergency-fund", changeType: "INCREASE", newAmount: { value: "500.00", confidence: "STRONG_ESTIMATE" } },
+    { currentCategoryId: "travel", changeType: "INCREASE", newAmount: { value: "250.00", confidence: "ROUGH_ESTIMATE" } },
+  ]);
+
+  it("a category not addressed in NEXT defaults to CURRENT — never forces a full re-answer", () => {
+    const next = resolveNextLifeCategories(current, intended, []);
+    expect(next.find((c) => c.id === "housing")!.nextAmount?.value).toBe("2000.00");
+  });
+
+  it("CUSTOM lets the owner land anywhere between current and intended — the worked example from the spec", () => {
+    const next = resolveNextLifeCategories(current, intended, [
+      { categoryId: "housing", choice: "CURRENT" },
+      { categoryId: "emergency-fund", choice: "CUSTOM", amount: { value: "300.00", confidence: "STRONG_ESTIMATE" } },
+      { categoryId: "travel", choice: "CURRENT" },
+    ]);
+    expect(next.find((c) => c.id === "housing")!.nextAmount?.value).toBe("2000.00");
+    expect(next.find((c) => c.id === "emergency-fund")!.nextAmount?.value).toBe("300.00");
+    expect(next.find((c) => c.id === "travel")!.nextAmount?.value).toBe("0.00");
+  });
+
+  it("INTENDED choice moves a category all the way to its intended amount", () => {
+    const next = resolveNextLifeCategories(current, intended, [{ categoryId: "emergency-fund", choice: "INTENDED" }]);
+    expect(next.find((c) => c.id === "emergency-fund")!.nextAmount?.value).toBe("500.00");
+  });
+
+  it("feeds computeLifeRequirement directly under the NEXT horizon", () => {
+    const next = resolveNextLifeCategories(current, intended, [
+      { categoryId: "housing", choice: "CURRENT" },
+      { categoryId: "emergency-fund", choice: "CUSTOM", amount: { value: "300.00", confidence: "STRONG_ESTIMATE" } },
+      { categoryId: "travel", choice: "CURRENT" },
+    ]);
+    expect(formatMoney(computeLifeRequirement(next, "NEXT").monthly)).toBe("2300.00");
+  });
+});
+
+describe("resolveNextSecurityItems", () => {
+  const current = [security({ id: "emergency", currentAmount: { value: "100.00", confidence: "EXACT" } })];
+  const intended = buildIntendedSecurityItems("lp1", current, [
+    { currentSecurityId: "emergency", changeType: "INCREASE", newAmount: { value: "500.00", confidence: "STRONG_ESTIMATE" } },
+  ]);
+
+  it("defaults to CURRENT when NEXT hasn't addressed the item", () => {
+    const next = resolveNextSecurityItems(current, intended, []);
+    expect(next.find((s) => s.id === "emergency")!.nextAmount?.value).toBe("100.00");
+  });
+
+  it("CUSTOM resolves to the owner's own intermediate amount", () => {
+    const next = resolveNextSecurityItems(current, intended, [
+      { itemId: "emergency", choice: "CUSTOM", amount: { value: "300.00", confidence: "ROUGH_ESTIMATE" } },
+    ]);
+    expect(next.find((s) => s.id === "emergency")!.nextAmount?.value).toBe("300.00");
   });
 });

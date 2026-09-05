@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hcfNowInput } from "./fixtures/hcf";
 import { completeBusinessNowInput } from "./fixtures/complete-business";
+import { completeNextInput } from "./fixtures/complete-next";
 import { runScenario } from "./scenario";
 
 describe("runScenario — HCF acceptance fixture (Build Spec §20), known facts only", () => {
@@ -275,6 +276,78 @@ describe("runScenario — UNCLASSIFIED_TOTAL preserves known cash as owner benef
     const zeroCash = runScenario(inputWithPrimaryUnclassifiedCash("0.00"), { revisionId: "r1" });
     const fiveThousandCash = runScenario(inputWithPrimaryUnclassifiedCash("5000.00"), { revisionId: "r2" });
     expect(zeroCash.requiredRevenue).toBe(fiveThousandCash.requiredRevenue);
+  });
+});
+
+describe("runScenario — complete NEXT acceptance fixture (fully synthetic, distinct from NOW and HCF)", () => {
+  const result = runScenario(completeNextInput(), { revisionId: "rev-next", computedAt: "2026-09-04T00:00:00.000Z" });
+
+  it("solves a real Required Revenue — never entered as a goal, always engine-derived", () => {
+    expect(result.requiredRevenue).not.toBeNull();
+    expect(Number(result.requiredRevenue)).toBeGreaterThan(0);
+    expect(result.actualRevenue).toBeNull(); // NEXT never has an actual
+  });
+
+  it("folds the known delegation cost and both recurring and one-time growth capital into the same waterfall as NOW", () => {
+    // Sanity: removing delegation + capital lowers Required Revenue relative to the fixture with them.
+    const leaner = completeNextInput();
+    leaner.delegationItems = [];
+    leaner.capitalItems = [];
+    const leanerResult = runScenario(leaner, { revisionId: "r" });
+    expect(Number(leanerResult.requiredRevenue)).toBeLessThan(Number(result.requiredRevenue));
+  });
+
+  it("computes the primary owner's total benefit as exactly their targeted labor comp plus their percentage share of distributable surplus — self-consistent with the backward solve", () => {
+    const primary = result.ownerEconomicsResults.find((o) => o.ownerId === "owner-1")!;
+    // No manual override and a SAME_AS_OWNERSHIP percentage means the solve
+    // lands the primary owner's total benefit exactly on the confirmed
+    // business-funded requirement — the same invariant proven for NOW's
+    // complete-business fixture in an earlier describe block.
+    expect(primary.totalOwnerEconomicBenefit).toBe(result.primaryOwnerBenefitVsRequirement!.businessFundedPersonalEconomicRequirement);
+    expect(result.primaryOwnerBenefitVsRequirement!.gap).toBe("0.00");
+  });
+
+  it("NOW and NEXT may have entirely different Required Revenue for the same underlying business", () => {
+    const nowResult = runScenario(completeBusinessNowInput(), { revisionId: "r-now" });
+    expect(result.requiredRevenue).not.toBe(nowResult.requiredRevenue);
+  });
+
+  it("is deterministic", () => {
+    const input = completeNextInput();
+    const meta = { revisionId: "r", computedAt: "2026-09-04T00:00:00.000Z" };
+    expect(runScenario(input, meta)).toEqual(runScenario(input, meta));
+  });
+});
+
+describe("runScenario — delegation cost feeds the same waterfall as known operating cost", () => {
+  it("a known delegation replacement cost raises Required Revenue exactly like an equivalent operating cost would", () => {
+    const withDelegation = completeBusinessNowInput();
+    withDelegation.delegationItems = [
+      { id: "d1", scenarioId: "ridgeline-now", functionLabel: "Bookkeeping", delegationType: "CONTRACTOR", replacementCost: { value: "300.00", confidence: "STRONG_ESTIMATE" }, cadence: "MONTHLY" },
+    ];
+    const withEquivalentOpex = completeBusinessNowInput();
+    withEquivalentOpex.operatingCosts = [
+      ...withEquivalentOpex.operatingCosts,
+      { id: "bookkeeping", scenarioId: "ridgeline-now", category: "bookkeeping", amount: "300.00", cadence: "MONTHLY", knownOrEstimated: "KNOWN", confidence: "STRONG_ESTIMATE", isPartialList: false },
+    ];
+
+    const delegationResult = runScenario(withDelegation, { revisionId: "r1" });
+    const opexResult = runScenario(withEquivalentOpex, { revisionId: "r2" });
+
+    expect(delegationResult.requiredRevenue).toBe(opexResult.requiredRevenue);
+    expect(delegationResult.breakEvenFloor?.revenue).toBe(opexResult.breakEvenFloor?.revenue);
+  });
+
+  it("an unknown delegation replacement cost contributes nothing to Required Revenue but is flagged as incomplete — a floor, not a fabricated market rate", () => {
+    const input = completeBusinessNowInput();
+    input.delegationItems = [
+      { id: "d1", scenarioId: "ridgeline-now", functionLabel: "Sales support", delegationType: "UNSURE", replacementCost: null, cadence: "MONTHLY" },
+    ];
+    const baseline = runScenario(completeBusinessNowInput(), { revisionId: "r1" });
+    const result = runScenario(input, { revisionId: "r2" });
+
+    expect(result.requiredRevenue).toBe(baseline.requiredRevenue);
+    expect(result.confidenceFlags).toContainEqual({ field: "delegationItems", confidence: "INCOMPLETE" });
   });
 });
 

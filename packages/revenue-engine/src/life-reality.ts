@@ -11,7 +11,13 @@ import type {
 import { normalizeCadence } from "./cadence";
 import { type Dec, ZERO, add, formatMoney, parseMoney } from "./money";
 
-type Horizon = "CURRENT" | "INTENDED";
+type Horizon = "CURRENT" | "NEXT" | "INTENDED";
+
+function amountForHorizon(entry: { currentAmount: ConfidenceValue<Money> | null; nextAmount: ConfidenceValue<Money> | null; intendedAmount: ConfidenceValue<Money> | null }, horizon: Horizon): ConfidenceValue<Money> | null {
+  if (horizon === "CURRENT") return entry.currentAmount;
+  if (horizon === "NEXT") return entry.nextAmount;
+  return entry.intendedAmount;
+}
 
 export interface LifeRequirementResult {
   monthly: Dec;
@@ -31,7 +37,7 @@ export function computeLifeRequirement(categories: LifeCategory[], horizon: Hori
   const missing: { kind: LifeCategoryKind; label: string }[] = [];
 
   for (const category of categories) {
-    const entry = horizon === "CURRENT" ? category.currentAmount : category.intendedAmount;
+    const entry = amountForHorizon(category, horizon);
     if (entry === null) {
       missing.push({ kind: category.kind, label: category.label });
       continue;
@@ -54,7 +60,7 @@ export function computeSecurityRequirement(items: SecurityItem[], horizon: Horiz
   const missing: { kind: SecurityItemKind; label: string }[] = [];
 
   for (const item of items) {
-    const entry = horizon === "CURRENT" ? item.currentAmount : item.intendedAmount;
+    const entry = amountForHorizon(item, horizon);
     if (entry === null) {
       missing.push({ kind: item.kind, label: item.label });
       continue;
@@ -141,6 +147,7 @@ export function buildIntendedLifeCategories(
         kind: change.kind,
         label: change.label,
         currentAmount: null,
+        nextAmount: null,
         intendedAmount: change.newAmount,
         cadence: change.cadence,
         changeType: "ADD",
@@ -220,6 +227,7 @@ export function buildIntendedSecurityItems(
         kind: change.kind,
         label: change.label,
         currentAmount: null,
+        nextAmount: null,
         intendedAmount: change.newAmount,
         cadence: change.cadence,
       });
@@ -247,6 +255,80 @@ export function buildIntendedSecurityItems(
   }
 
   return result;
+}
+
+// ---- building NEXT's intermediate life from Current + Intended ----
+
+/**
+ * NEXT does not get its own full Life Reality questionnaire (Build Spec
+ * Milestone 6 §2). For each category the owner picks a point between what
+ * they have now and what they're building toward — CURRENT as-is, INTENDED
+ * as-is, or a CUSTOM intermediate amount — never an automatic interpolation.
+ */
+export type NextLifeCategorySelection =
+  | { categoryId: ID; choice: "CURRENT" }
+  | { categoryId: ID; choice: "INTENDED" }
+  | { categoryId: ID; choice: "CUSTOM"; amount: ConfidenceValue<Money> };
+
+/**
+ * Resolves NEXT amounts from Current + Intended life categories, keyed by
+ * category id (Intended is a superset of Current's ids plus any ADDed
+ * categories — see buildIntendedLifeCategories). A category the owner
+ * hasn't addressed in NEXT defaults to CURRENT — the same "carry forward
+ * unless changed" rule already used for Current → Intended, never a blank
+ * slate and never an automatic move toward Intended.
+ */
+export function resolveNextLifeCategories(
+  current: LifeCategory[],
+  intended: LifeCategory[],
+  selections: NextLifeCategorySelection[],
+): LifeCategory[] {
+  const currentById = new Map(current.map((c) => [c.id, c]));
+  const selectionById = new Map(selections.map((s) => [s.categoryId, s]));
+
+  return intended.map((intendedCategory) => {
+    const selection = selectionById.get(intendedCategory.id);
+    const currentCategory = currentById.get(intendedCategory.id);
+    let nextAmount: ConfidenceValue<Money> | null;
+    if (!selection || selection.choice === "CURRENT") {
+      nextAmount = currentCategory?.currentAmount ?? null;
+    } else if (selection.choice === "INTENDED") {
+      nextAmount = intendedCategory.intendedAmount;
+    } else {
+      nextAmount = selection.amount;
+    }
+    return { ...intendedCategory, nextAmount };
+  });
+}
+
+/** Mirrors NextLifeCategorySelection for security items. */
+export type NextSecurityItemSelection =
+  | { itemId: ID; choice: "CURRENT" }
+  | { itemId: ID; choice: "INTENDED" }
+  | { itemId: ID; choice: "CUSTOM"; amount: ConfidenceValue<Money> };
+
+/** Mirrors resolveNextLifeCategories for security items. */
+export function resolveNextSecurityItems(
+  current: SecurityItem[],
+  intended: SecurityItem[],
+  selections: NextSecurityItemSelection[],
+): SecurityItem[] {
+  const currentById = new Map(current.map((c) => [c.id, c]));
+  const selectionById = new Map(selections.map((s) => [s.itemId, s]));
+
+  return intended.map((intendedItem) => {
+    const selection = selectionById.get(intendedItem.id);
+    const currentItem = currentById.get(intendedItem.id);
+    let nextAmount: ConfidenceValue<Money> | null;
+    if (!selection || selection.choice === "CURRENT") {
+      nextAmount = currentItem?.currentAmount ?? null;
+    } else if (selection.choice === "INTENDED") {
+      nextAmount = intendedItem.intendedAmount;
+    } else {
+      nextAmount = selection.amount;
+    }
+    return { ...intendedItem, nextAmount };
+  });
 }
 
 // ---- current vs. intended comparison ----

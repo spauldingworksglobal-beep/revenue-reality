@@ -35,6 +35,14 @@ export interface LifeCategory {
   kind: LifeCategoryKind;
   label: string;
   currentAmount: ConfidenceValue<Money> | null;
+  /**
+   * NEXT's intermediate value for this category — the owner's own chosen
+   * point between currentAmount and intendedAmount (or equal to either).
+   * Resolved by resolveNextLifeCategories (revenue-engine/life-reality.ts),
+   * never interpolated automatically. null when NEXT hasn't addressed this
+   * category yet.
+   */
+  nextAmount: ConfidenceValue<Money> | null;
   intendedAmount: ConfidenceValue<Money> | null;
   cadence: Cadence;
   changeType: ChangeType;
@@ -46,6 +54,8 @@ export interface SecurityItem {
   kind: SecurityItemKind;
   label: string;
   currentAmount: ConfidenceValue<Money> | null;
+  /** See LifeCategory.nextAmount — the same NEXT-intermediate concept, for security items. */
+  nextAmount: ConfidenceValue<Money> | null;
   intendedAmount: ConfidenceValue<Money> | null;
   cadence: Cadence;
 }
@@ -88,7 +98,7 @@ export interface TimeProfile {
   intendedAvailableHoursWeek: ConfidenceValue<number>;
   ultimateBusinessHoursWeek: ConfidenceValue<number>;
   desiredWorkTypes: string[];
-  /** Qualitative only — no cost attached here. Delegation cost belongs to ULTIMATELY business economics, a later milestone. */
+  /** Qualitative only — no cost attached here. A structured, costed delegation decision belongs to DelegationItem (NEXT/ULTIMATELY business economics), not here. */
   workToEventuallyDelegate: string[];
   otherTimeClaims: { label: string; hoursWeek?: number }[];
   lifePriorityReservations: string[];
