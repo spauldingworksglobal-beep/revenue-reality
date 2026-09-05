@@ -15,7 +15,7 @@ import type {
   ScenarioDistributionPolicy,
   SecurityItem,
 } from "@revenue-reality/domain";
-import { buildIntendedLifeCategories, buildIntendedSecurityItems, type BusinessFundedConfirmation, type UltimatelyStreamAssemblyInput } from "@revenue-reality/revenue-engine";
+import { buildIntendedLifeCategories, buildIntendedSecurityItems, type BusinessFundedConfirmation, type OwnerInvolvementNature, type UltimatelyStreamAssemblyInput } from "@revenue-reality/revenue-engine";
 import { useNext, type NextOwnerInput } from "./next-store";
 import { useNow, type NowOwnerInput } from "./now-store";
 import { useLifeReality } from "./life-store";
@@ -83,6 +83,19 @@ interface UltimatelyContextValue {
   ultimatelyWorkToContinue: string[];
   setUltimatelyWorkToContinue: (updater: (prev: string[]) => string[]) => void;
 
+  /**
+   * Whether the owner's ULTIMATELY hours are work the business still
+   * requires from them, or time they choose to stay involved — a genuinely
+   * separate fact from the hours themselves, never inferred from a
+   * work-type label. No prior milestone captures this, so it always starts
+   * UNKNOWN rather than being seeded/guessed from anything upstream.
+   */
+  ownerInvolvementNature: OwnerInvolvementNature;
+  setOwnerInvolvementNature: (value: OwnerInvolvementNature) => void;
+  /** Only meaningful when ownerInvolvementNature is "MIXED" — which of ultimatelyWorkToContinue the owner identified as required; the rest are chosen. */
+  requiredFunctionsWhenMixed: string[];
+  setRequiredFunctionsWhenMixed: (updater: (prev: string[]) => string[]) => void;
+
   // ---- ULTIMATELY business model (independent copy, seeded from NEXT/NOW once) ----
   streamInputs: UltimatelyStreamAssemblyInput[];
   getStreamInput: (streamId: string) => UltimatelyStreamAssemblyInput;
@@ -142,6 +155,8 @@ export function UltimatelyProvider({ children }: { children: ReactNode }) {
   const [snapshotIntendedOwnershipModel, setSnapshotIntendedOwnershipModel] = useState<OwnershipIntent | null>(null);
 
   const [ultimatelyWorkToContinue, setUltimatelyWorkToContinue] = useState<string[]>([]);
+  const [ownerInvolvementNature, setOwnerInvolvementNature] = useState<OwnerInvolvementNature>("UNKNOWN");
+  const [requiredFunctionsWhenMixed, setRequiredFunctionsWhenMixed] = useState<string[]>([]);
 
   const [streamInputs, setStreamInputs] = useState<UltimatelyStreamAssemblyInput[]>([]);
   const [operatingCosts, setOperatingCostsState] = useState<OperatingCost[]>([]);
@@ -259,6 +274,11 @@ export function UltimatelyProvider({ children }: { children: ReactNode }) {
       ultimatelyWorkToContinue,
       setUltimatelyWorkToContinue: (updater) => setUltimatelyWorkToContinue(updater),
 
+      ownerInvolvementNature,
+      setOwnerInvolvementNature,
+      requiredFunctionsWhenMixed,
+      setRequiredFunctionsWhenMixed: (updater) => setRequiredFunctionsWhenMixed(updater),
+
       streamInputs,
       getStreamInput: (streamId) => streamInputs.find((s) => s.streamId === streamId) ?? emptyStreamInput(streamId),
       updateStreamInput: (streamId, patch) =>
@@ -312,6 +332,8 @@ export function UltimatelyProvider({ children }: { children: ReactNode }) {
       snapshotLifePriorityReservations,
       snapshotIntendedOwnershipModel,
       ultimatelyWorkToContinue,
+      ownerInvolvementNature,
+      requiredFunctionsWhenMixed,
       streamInputs,
       operatingCosts,
       opexListIsPartial,

@@ -4,6 +4,14 @@ import { WizardShell, EphemeralNotice } from "@/components/WizardShell";
 import { ChipMultiSelect } from "@/components/ChipMultiSelect";
 import { useLifeReality } from "@/lib/life-store";
 import { useUltimately } from "@/lib/ultimately-store";
+import type { OwnerInvolvementNature } from "@revenue-reality/revenue-engine";
+
+const INVOLVEMENT_OPTIONS: { value: OwnerInvolvementNature; label: string }[] = [
+  { value: "REQUIRED", label: "Required for the business to operate" },
+  { value: "CHOSEN", label: "Chosen involvement" },
+  { value: "MIXED", label: "A mix of both" },
+  { value: "UNKNOWN", label: "I'm not sure" },
+];
 
 export default function UltimatelyTimePage() {
   const { desiredWorkTypes, workToEventuallyDelegate } = useLifeReality();
@@ -13,6 +21,10 @@ export default function UltimatelyTimePage() {
     snapshotLifePriorityReservations,
     ultimatelyWorkToContinue,
     setUltimatelyWorkToContinue,
+    ownerInvolvementNature,
+    setOwnerInvolvementNature,
+    requiredFunctionsWhenMixed,
+    setRequiredFunctionsWhenMixed,
   } = useUltimately();
 
   return (
@@ -52,6 +64,43 @@ export default function UltimatelyTimePage() {
         selected={ultimatelyWorkToContinue}
         onChange={setUltimatelyWorkToContinue}
       />
+
+      <fieldset className="rounded-lg border border-ink/15 bg-white p-4">
+        <legend className="px-1 text-sm font-medium">
+          In the mature business, are these hours work the business still requires from you, or time you choose to stay involved?
+        </legend>
+        <div className="mt-2 flex flex-col gap-2" role="radiogroup" aria-label="Owner involvement nature">
+          {INVOLVEMENT_OPTIONS.map((opt) => (
+            <label
+              key={opt.value}
+              className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 ${
+                ownerInvolvementNature === opt.value ? "border-accent bg-accent/10" : "border-ink/15"
+              }`}
+            >
+              <input
+                type="radio"
+                name="owner-involvement-nature"
+                checked={ownerInvolvementNature === opt.value}
+                onChange={() => setOwnerInvolvementNature(opt.value)}
+                className="h-4 w-4"
+              />
+              <span className="font-medium">{opt.label}</span>
+            </label>
+          ))}
+        </div>
+
+        {ownerInvolvementNature === "MIXED" && ultimatelyWorkToContinue.length > 0 && (
+          <div className="mt-3">
+            <ChipMultiSelect
+              label="Which of these does the business still require from you?"
+              hint="Leave the rest unselected — those are treated as chosen involvement, not required."
+              options={ultimatelyWorkToContinue}
+              selected={requiredFunctionsWhenMixed}
+              onChange={setRequiredFunctionsWhenMixed}
+            />
+          </div>
+        )}
+      </fieldset>
 
       {workToEventuallyDelegate.length > 0 && (
         <div className="rounded-lg border border-ink/15 bg-white p-4 text-sm">

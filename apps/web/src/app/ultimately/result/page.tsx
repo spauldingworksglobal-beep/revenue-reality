@@ -31,10 +31,12 @@ const MISSING_LABELS: Record<UltimatelyScenarioMissingReason, { label: string; h
 };
 
 const ROLE_FIT_MESSAGES: Record<string, (ownershipLabel: string) => string> = {
-  OWNER_HOURS_MAY_CONTRADICT_INTENDED_MODEL: (ownershipLabel) =>
-    `You said this business should ultimately be "${ownershipLabel}," but this model still shows confirmed owner hours. Revenue Reality never reduces hours automatically — confirm this is intentional, or adjust Intended Time Reality or the ownership model.`,
   OWNER_STILL_PERFORMS_WORK_THEY_SAID_TO_DELEGATE: () =>
     `You said some of this work should no longer depend on you, but this model still lists it as work you continue to perform. Revenue Reality never invents a delegation resource to resolve this — reconcile it on the Time Reality or Owners/Delegation screens.`,
+  REQUIRED_OWNER_HOURS_CONTRADICT_INTENDED_MODEL: (ownershipLabel) =>
+    `You said this business should ultimately be "${ownershipLabel}," but this model requires your ongoing hours to operate — not just your chosen involvement. Revenue Reality never reduces hours automatically — confirm this is intentional, or adjust Intended Time Reality or the ownership model.`,
+  OWNER_DEPENDENCY_NOT_YET_CLARIFIED: () =>
+    `This model shows confirmed owner hours, but it isn't yet clear whether the business requires them or you're simply choosing to stay involved. Answer that on the Time Reality screen to resolve Role.`,
 };
 
 const CONFIDENCE_LABELS: Record<ConfidenceLevel, string> = {
@@ -196,13 +198,16 @@ export default function UltimatelyResultPage() {
 
   // Diagnoses a contradiction between the owner's stated intended ownership
   // model and the mature model as actually built — never resolves it (no
-  // auto-reducing hours, no invented delegation resource). Only
-  // RUNS_WITHOUT_ME/ASSET carry an owner-independence expectation to check.
+  // auto-reducing hours, no invented delegation resource). The explicit
+  // delegate-contradiction check applies to every ownership model; only
+  // RUNS_WITHOUT_ME/ASSET also check required-vs-chosen owner hours.
   const roleFit = assessOwnershipRoleFit({
     intendedOwnershipModel: ultimately.snapshotIntendedOwnershipModel,
     ownerBusinessHoursWeek: ultimately.snapshotUltimateBusinessHoursWeek,
     workOwnerContinuesToPerform: ultimately.ultimatelyWorkToContinue,
     workOwnerSaidShouldNotDependOnThem: workToEventuallyDelegate,
+    ownerInvolvementNature: ultimately.ownerInvolvementNature,
+    requiredFunctionsWhenMixed: ultimately.requiredFunctionsWhenMixed,
   });
   const ownershipModelLabel = OWNERSHIP_INTENT_OPTIONS.find((o) => o.value === ultimately.snapshotIntendedOwnershipModel)?.label ?? "";
 
@@ -294,9 +299,18 @@ export default function UltimatelyResultPage() {
         </div>
       )}
 
-      {roleFit.applies && roleFit.flags.length > 0 && (
+      {roleFit.status === "MISMATCH" && (
         <div className="flex flex-col gap-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
           <p className="font-medium">This mature model may not match your intended ownership role yet:</p>
+          {roleFit.flags.map((flag) => (
+            <p key={flag}>{ROLE_FIT_MESSAGES[flag]?.(ownershipModelLabel)}</p>
+          ))}
+        </div>
+      )}
+
+      {roleFit.status === "INCOMPLETE" && (
+        <div className="flex flex-col gap-1 rounded-md border border-accent/40 bg-accent/5 p-3 text-xs text-ink/80">
+          <p className="font-medium">Owner involvement isn&rsquo;t fully clarified yet:</p>
           {roleFit.flags.map((flag) => (
             <p key={flag}>{ROLE_FIT_MESSAGES[flag]?.(ownershipModelLabel)}</p>
           ))}
@@ -433,11 +447,13 @@ export default function UltimatelyResultPage() {
           <dd>{result.timeSignal === "FITS" ? "Operates within your intended business hours" : result.timeSignal === "EXCEEDS_AVAILABLE" ? "Exceeds your intended available hours" : "Not enough data yet"}</dd>
           <dt className="text-ink/60">Role</dt>
           <dd>
-            {roleFit.applies && roleFit.flags.length > 0
+            {roleFit.status === "MISMATCH"
               ? "May not match your intended ownership model — see above"
-              : hasUnknownDelegationCost
-                ? "Still depends on unresolved delegation costs"
-                : "Owner's role in this model is fully resolved"}
+              : roleFit.status === "INCOMPLETE"
+                ? "Owner involvement not yet clarified — see above"
+                : hasUnknownDelegationCost
+                  ? "Still depends on unresolved delegation costs"
+                  : "Owner's role in this model is fully resolved"}
           </dd>
           <dt className="text-ink/60">Business</dt>
           <dd>{ultimately.opexListIsPartial ? "Operating costs are known to be incomplete" : "Known operating costs and retention are complete"}</dd>
