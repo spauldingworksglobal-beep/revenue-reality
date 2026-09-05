@@ -289,7 +289,7 @@ export default function NowResultPage() {
       <section className="rounded-lg border border-ink/15 bg-white p-4">
         <h2 className="text-sm font-semibold">What the current model actually provides each owner</h2>
         <ul className="mt-2 flex flex-col gap-2 text-sm">
-          {result.ownerEconomicsResults.map((r) => {
+          {(result.ownerEconomicsResults ?? []).map((r) => {
             const owner = owners.find((o) => o.id === r.ownerId);
             return (
               <li key={r.ownerId} className="rounded-md border border-ink/10 p-2">

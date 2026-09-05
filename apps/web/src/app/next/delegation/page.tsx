@@ -46,12 +46,31 @@ export default function NextDelegationPage() {
       eyebrow="NEXT · Owner Labor / Delegation"
       title="Should any work stop depending on you in this step?"
       intro={
-        <p>
-          If NEXT begins moving work away from you, name it here. A known replacement cost becomes a
-          real recurring cost the business must produce revenue to cover. If you don&rsquo;t know the
-          cost yet, leave it blank — Revenue Reality will never invent a market rate, and will say so
-          plainly rather than pretend the number is complete.
-        </p>
+        <>
+          <p>
+            If NEXT begins moving work away from you, name it here. A known replacement cost becomes a
+            real recurring cost the business must produce revenue to cover. If you don&rsquo;t know the
+            cost yet, leave it blank — Revenue Reality will never invent a market rate, and will say so
+            plainly rather than pretend the number is complete.
+          </p>
+          <p className="mt-3 rounded-md border border-ink/15 bg-white p-3 text-xs text-ink/70">
+            This never charges the same work twice. Three cases:
+          </p>
+          <ul className="mt-1 list-disc pl-5 text-xs text-ink/70">
+            <li>
+              <strong>You keep doing this work.</strong> Don&rsquo;t list it here — it&rsquo;s already reflected in
+              your own compensation on the owners screen.
+            </li>
+            <li>
+              <strong>You stop doing it and it&rsquo;s replaced.</strong> List it here with its replacement cost —
+              this is a real added cost, separate from your own pay.
+            </li>
+            <li>
+              <strong>You keep part of it and delegate the rest.</strong> List only the delegated portion here;
+              the part you keep stays reflected in your own compensation, not here.
+            </li>
+          </ul>
+        </>
       }
       backHref="/next/owners"
       nextHref="/next/distribution"

@@ -60,16 +60,21 @@ export interface BuildNextScenarioInputParams {
   nextLifeCategories: LifeCategory[];
   nextSecurity: SecurityItem[];
   /**
-   * Unlike NOW, NEXT's whole purpose is to solve Required Revenue, so a
-   * confirmed funding responsibility is a genuine requirement here — see
-   * NextScenarioMissingReason.NEXT_FUNDING_CONFIRMATION.
+   * null when the owner has never confirmed how much of NEXT's personal
+   * economic requirement the business is responsible for. This does not
+   * block the NEXT result — it flows straight through to
+   * ScenarioLifeAssumption.outsideFundingRetained as null, and the engine
+   * (scenario.ts) leaves Required Revenue and the owner-benefit comparison
+   * unavailable as a result, while every revenue-independent output
+   * (margins, known costs, retained capital, break-even, capacity, time)
+   * remains fully calculable — see runScenario's graceful degradation.
    */
   nextFundingConfirmation: BusinessFundedConfirmation | null;
   restructureDate: ISODate | null;
   capacity: Capacity | null;
 }
 
-export type NextScenarioMissingReason = "NEXT_FUNDING_CONFIRMATION" | "NO_USABLE_REVENUE_STREAM";
+export type NextScenarioMissingReason = "NO_USABLE_REVENUE_STREAM";
 
 export type NextScenarioAssemblyResult =
   | {
@@ -91,18 +96,17 @@ export type NextScenarioAssemblyResult =
  * live state). Feeds the exact same runScenario as NOW; NEXT never gets a
  * second calculator.
  *
- * Required Revenue is the entire point of NEXT, so — unlike NOW — an
- * unconfirmed funding responsibility is a hard requirement here: the
- * scenario is reported INCOMPLETE rather than producing a result with
- * Required Revenue silently missing (see runScenario's own guard: NEXT/
- * ULTIMATELY throw if asked to run without a resolvable required revenue).
- * Unknown ownership, an unresolved sales mix, and unknown delegation
- * replacement costs are never fabricated — see the equivalent comment on
+ * An unconfirmed funding responsibility does NOT block the NEXT result —
+ * only Required Revenue and the outputs that depend on it (see runScenario:
+ * it now degrades gracefully instead of throwing). Stream economics,
+ * margins, known operating/growth costs, retained capital, break-even,
+ * capacity, and time signals all remain calculable and are shown. Unknown
+ * ownership, an unresolved sales mix, and unknown delegation replacement
+ * costs are never fabricated — see the equivalent comment on
  * buildNowScenarioInput; the same rules apply here unchanged.
  */
 export function buildNextScenarioInput(params: BuildNextScenarioInputParams): NextScenarioAssemblyResult {
   const missing: NextScenarioMissingReason[] = [];
-  if (params.nextFundingConfirmation === null) missing.push("NEXT_FUNDING_CONFIRMATION");
 
   const streamInputById = new Map(params.streamInputs.map((s) => [s.streamId, s]));
   const streamAssembly = resolveScenarioStreams(params.scenarioId, params.activeStreams.map((s) => s.id), streamInputById);
@@ -151,7 +155,10 @@ export function buildNextScenarioInput(params: BuildNextScenarioInputParams): Ne
   const lifeReq = computeLifeRequirement(params.nextLifeCategories, "NEXT");
   const securityReq = computeSecurityRequirement(params.nextSecurity, "NEXT");
   const totalPersonalEconomicRequirement = computeTotalPersonalEconomicRequirement(lifeReq.monthly, securityReq.monthly);
-  const outsideFundingRetained = deriveOutsideFundingRetained(totalPersonalEconomicRequirement, params.nextFundingConfirmation!);
+  const outsideFundingRetained =
+    params.nextFundingConfirmation === null
+      ? null
+      : deriveOutsideFundingRetained(totalPersonalEconomicRequirement, params.nextFundingConfirmation);
 
   const input: ScenarioEngineInput = {
     scenarioType: "NEXT",

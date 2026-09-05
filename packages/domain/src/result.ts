@@ -63,12 +63,16 @@ export interface ScenarioResult {
   } | null;
   perStreamEconomics: StreamEconomicsResult[];
 
-  // Distribution waterfall
-  operatingEconomicSurplus: Money; // contribution economics − known opex − Σ owner labor compensation
-  requiredRetainedBusinessCapital: RetainedCapitalResult;
-  distributableEconomicSurplus: Money; // operatingEconomicSurplus − retained capital total — never sourced elsewhere
-  ownerEconomicsResults: OwnerEconomicsResult[];
-  /** null when funding responsibility is unconfirmed — there is no requirement figure to compare against. */
+  // Distribution waterfall — null when there is no forward revenue to run the
+  // waterfall on (NEXT/ULTIMATELY with funding responsibility unconfirmed:
+  // there is no actual revenue to fall back on and no solved Required
+  // Revenue either, so nothing downstream of "revenue in" can be computed
+  // honestly). NOW always has an actual revenue, so this is never null there.
+  operatingEconomicSurplus: Money | null; // contribution economics − known opex − Σ owner labor compensation
+  requiredRetainedBusinessCapital: RetainedCapitalResult; // independent of revenue — always computed
+  distributableEconomicSurplus: Money | null; // operatingEconomicSurplus − retained capital total — never sourced elsewhere
+  ownerEconomicsResults: OwnerEconomicsResult[] | null;
+  /** null when funding responsibility is unconfirmed, or when there's no forward revenue to compute a benefit from. */
   primaryOwnerBenefitVsRequirement: PrimaryOwnerBenefitVsRequirement | null;
 
   ownerSupportSignal: OwnerSupportSignal; // derived from primaryOwnerBenefitVsRequirement, not revenue

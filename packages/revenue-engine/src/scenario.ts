@@ -129,75 +129,81 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
   }
 
   // --- forward pass: actual revenue for NOW, solved revenue for NEXT/ULTIMATELY ---
-  let forwardRevenue: Dec;
+  // For NOW there is always an actual revenue to run forward with. For NEXT/
+  // ULTIMATELY, forwardRevenue is the solved Required Revenue — which can be
+  // null when funding responsibility is unconfirmed (see above). That is NOT
+  // a reason to fail the whole calculation: everything already computed
+  // above (margins, known costs, retained capital, capacity/time signals)
+  // stays available. Only what genuinely depends on a revenue figure —
+  // the distribution waterfall below — becomes unavailable, not fabricated.
+  let forwardRevenue: Dec | null;
   if (input.scenarioType === "NOW") {
     if (input.actualRevenue === null) {
       throw new RangeError("NOW scenarios require actualRevenue");
     }
     forwardRevenue = parseMoney(input.actualRevenue);
   } else {
-    if (requiredRevenue === null) {
-      throw new RangeError("NEXT/ULTIMATELY scenarios require a resolvable required revenue — confirm funding responsibility first");
-    }
     forwardRevenue = requiredRevenue;
   }
 
-  const contributionEconomics = computeContributionEconomics(forwardRevenue, weightedContributionMargin);
-  const operatingEconomicSurplus = computeOperatingEconomicSurplus(contributionEconomics, knownRecurringCost, ownerCashOutflows);
-  const distributableEconomicSurplus = computeDistributableEconomicSurplus(operatingEconomicSurplus, retainedCapital.total);
+  let operatingEconomicSurplus: Dec | null = null;
+  let distributableEconomicSurplus: Dec | null = null;
+  let ownerEconomicsResults: OwnerEconomicsResult[] | null = null;
 
-  const ownerEconomicsResults: OwnerEconomicsResult[] = input.ownerEconomics.map((owner) => {
-    const cash = cashByOwner.get(owner.ownerId)!;
+  if (forwardRevenue !== null) {
+    const contributionEconomics = computeContributionEconomics(forwardRevenue, weightedContributionMargin);
+    operatingEconomicSurplus = computeOperatingEconomicSurplus(contributionEconomics, knownRecurringCost, ownerCashOutflows);
+    distributableEconomicSurplus = computeDistributableEconomicSurplus(operatingEconomicSurplus, retainedCapital.total);
+    const resolvedDistributableEconomicSurplus = distributableEconomicSurplus;
 
-    if (cash.unclassifiedTotal !== null) {
-      return {
-        ownerId: owner.ownerId,
-        laborCompensation: formatMoney(cash.unclassifiedTotal),
-        profitDistribution: formatMoney(ZERO),
-        totalOwnerEconomicBenefit: formatMoney(cash.unclassifiedTotal),
-      };
-    }
+    ownerEconomicsResults = input.ownerEconomics.map((owner) => {
+      const cash = cashByOwner.get(owner.ownerId)!;
 
-    if (cash.measuredProfitDistribution !== null) {
-      const total = computeTotalOwnerEconomicBenefit(cash.laborCompensation, cash.measuredProfitDistribution);
+      if (cash.unclassifiedTotal !== null) {
+        return {
+          ownerId: owner.ownerId,
+          laborCompensation: formatMoney(cash.unclassifiedTotal),
+          profitDistribution: formatMoney(ZERO),
+          totalOwnerEconomicBenefit: formatMoney(cash.unclassifiedTotal),
+        };
+      }
+
+      if (cash.measuredProfitDistribution !== null) {
+        const total = computeTotalOwnerEconomicBenefit(cash.laborCompensation, cash.measuredProfitDistribution);
+        return {
+          ownerId: owner.ownerId,
+          laborCompensation: formatMoney(cash.laborCompensation),
+          profitDistribution: formatMoney(cash.measuredProfitDistribution),
+          totalOwnerEconomicBenefit: formatMoney(total),
+        };
+      }
+
+      const distPercent = resolveDistributionPercent(owner, input.ownerEconomics, input.distributionPolicy);
+      let profitDistribution: Dec;
+      if (distPercent !== null) {
+        profitDistribution = computeOwnerProfitDistribution(resolvedDistributableEconomicSurplus, distPercent);
+      } else if (owner.targetProfitDistribution) {
+        profitDistribution = parseMoney(owner.targetProfitDistribution.value);
+      } else {
+        profitDistribution = ZERO;
+        confidenceFlags.push({ field: `ownerEconomics.${owner.ownerId}.profitDistribution`, confidence: "INCOMPLETE" });
+      }
+
+      const total = computeTotalOwnerEconomicBenefit(cash.laborCompensation, profitDistribution);
       return {
         ownerId: owner.ownerId,
         laborCompensation: formatMoney(cash.laborCompensation),
-        profitDistribution: formatMoney(cash.measuredProfitDistribution),
+        profitDistribution: formatMoney(profitDistribution),
         totalOwnerEconomicBenefit: formatMoney(total),
       };
-    }
+    });
+  }
 
-    const distPercent = resolveDistributionPercent(owner, input.ownerEconomics, input.distributionPolicy);
-    let profitDistribution: Dec;
-    if (distPercent !== null) {
-      profitDistribution = computeOwnerProfitDistribution(distributableEconomicSurplus, distPercent);
-    } else if (owner.targetProfitDistribution) {
-      profitDistribution = parseMoney(owner.targetProfitDistribution.value);
-    } else {
-      profitDistribution = ZERO;
-      confidenceFlags.push({ field: `ownerEconomics.${owner.ownerId}.profitDistribution`, confidence: "INCOMPLETE" });
-    }
-
-    const total = computeTotalOwnerEconomicBenefit(cash.laborCompensation, profitDistribution);
-    return {
-      ownerId: owner.ownerId,
-      laborCompensation: formatMoney(cash.laborCompensation),
-      profitDistribution: formatMoney(profitDistribution),
-      totalOwnerEconomicBenefit: formatMoney(total),
-    };
-  });
-
-  const primaryResult = ownerEconomicsResults.find((r) => r.ownerId === primaryOwner.ownerId)!;
-  const primaryTotalBenefit = parseMoney(primaryResult.totalOwnerEconomicBenefit);
-
-  let primaryOwnerBenefitVsRequirement: PrimaryOwnerBenefitVsRequirement | null;
-  let ownerSupportSignal: OwnerSupportSignal;
-  if (funding.businessFundedRequirement === null) {
-    // No confirmed requirement to compare against — there is nothing honest to report here.
-    primaryOwnerBenefitVsRequirement = null;
-    ownerSupportSignal = "INSUFFICIENT_DATA";
-  } else {
+  let primaryOwnerBenefitVsRequirement: PrimaryOwnerBenefitVsRequirement | null = null;
+  let ownerSupportSignal: OwnerSupportSignal = "INSUFFICIENT_DATA";
+  if (ownerEconomicsResults !== null && funding.businessFundedRequirement !== null) {
+    const primaryResult = ownerEconomicsResults.find((r) => r.ownerId === primaryOwner.ownerId)!;
+    const primaryTotalBenefit = parseMoney(primaryResult.totalOwnerEconomicBenefit);
     const gap = subtract(primaryTotalBenefit, funding.businessFundedRequirement);
     primaryOwnerBenefitVsRequirement = {
       businessFundedPersonalEconomicRequirement: formatMoney(funding.businessFundedRequirement),
@@ -234,13 +240,13 @@ export function runScenario(input: ScenarioEngineInput, meta: RunScenarioMeta): 
       contributionMargin: formatPercent(s.contributionMargin),
     })),
 
-    operatingEconomicSurplus: formatMoney(operatingEconomicSurplus),
+    operatingEconomicSurplus: operatingEconomicSurplus === null ? null : formatMoney(operatingEconomicSurplus),
     requiredRetainedBusinessCapital: {
       recurring: formatMoney(retainedCapital.recurring),
       oneTime: formatMoney(retainedCapital.oneTime),
       total: formatMoney(retainedCapital.total),
     },
-    distributableEconomicSurplus: formatMoney(distributableEconomicSurplus),
+    distributableEconomicSurplus: distributableEconomicSurplus === null ? null : formatMoney(distributableEconomicSurplus),
     ownerEconomicsResults,
     primaryOwnerBenefitVsRequirement,
 

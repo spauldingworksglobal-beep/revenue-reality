@@ -2,8 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  buildIntendedLifeCategories,
-  buildIntendedSecurityItems,
   computeLifeRequirement,
   computeSecurityRequirement,
   computeTotalPersonalEconomicRequirement,
@@ -15,7 +13,6 @@ import {
 } from "@revenue-reality/revenue-engine";
 import { ValidationError, parseCurrencyInput } from "@revenue-reality/validation";
 import { WizardShell, EphemeralNotice } from "@/components/WizardShell";
-import { useLifeReality } from "@/lib/life-store";
 import { useNext } from "@/lib/next-store";
 
 type Choice = "CURRENT" | "INTENDED" | "CUSTOM";
@@ -69,22 +66,29 @@ function ChoiceRow({
 }
 
 export default function NextLifePage() {
-  const { currentCategories, lifeChanges, currentSecurity, securityChanges, lifeProfileId } = useLifeReality();
-  const { nextLifeCategorySelections, setNextLifeCategorySelection, nextSecurityItemSelections, setNextSecurityItemSelection, nextFundingConfirmation, setNextFundingConfirmation } = useNext();
+  const {
+    snapshotCurrentCategories,
+    snapshotIntendedCategories,
+    snapshotCurrentSecurity,
+    snapshotIntendedSecurity,
+    nextLifeCategorySelections,
+    setNextLifeCategorySelection,
+    nextSecurityItemSelections,
+    setNextSecurityItemSelection,
+    nextFundingConfirmation,
+    setNextFundingConfirmation,
+  } = useNext();
   const [fundingRaw, setFundingRaw] = useState("");
   const [fundingMode, setFundingMode] = useState<"AMOUNT" | "PERCENT">("PERCENT");
   const [fundingError, setFundingError] = useState<string | null>(null);
 
-  const intendedCategories = useMemo(() => buildIntendedLifeCategories(lifeProfileId, currentCategories, lifeChanges), [lifeProfileId, currentCategories, lifeChanges]);
-  const intendedSecurity = useMemo(() => buildIntendedSecurityItems(lifeProfileId, currentSecurity, securityChanges), [lifeProfileId, currentSecurity, securityChanges]);
-
   const nextCategories = useMemo(
-    () => resolveNextLifeCategories(currentCategories, intendedCategories, nextLifeCategorySelections),
-    [currentCategories, intendedCategories, nextLifeCategorySelections],
+    () => resolveNextLifeCategories(snapshotCurrentCategories, snapshotIntendedCategories, nextLifeCategorySelections),
+    [snapshotCurrentCategories, snapshotIntendedCategories, nextLifeCategorySelections],
   );
   const nextSecurityItems = useMemo(
-    () => resolveNextSecurityItems(currentSecurity, intendedSecurity, nextSecurityItemSelections),
-    [currentSecurity, intendedSecurity, nextSecurityItemSelections],
+    () => resolveNextSecurityItems(snapshotCurrentSecurity, snapshotIntendedSecurity, nextSecurityItemSelections),
+    [snapshotCurrentSecurity, snapshotIntendedSecurity, nextSecurityItemSelections],
   );
 
   const nextLife = useMemo(() => computeLifeRequirement(nextCategories, "NEXT"), [nextCategories]);
@@ -139,7 +143,7 @@ export default function NextLifePage() {
       nextHref="/next/time"
     >
       {nextCategories.map((category) => {
-        const current = currentCategories.find((c) => c.id === category.id);
+        const current = snapshotCurrentCategories.find((c) => c.id === category.id);
         return (
           <ChoiceRow
             key={category.id}
@@ -168,7 +172,7 @@ export default function NextLifePage() {
       })}
 
       {nextSecurityItems.map((item) => {
-        const current = currentSecurity.find((s) => s.id === item.id);
+        const current = snapshotCurrentSecurity.find((s) => s.id === item.id);
         return (
           <ChoiceRow
             key={item.id}

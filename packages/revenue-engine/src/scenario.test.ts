@@ -200,11 +200,43 @@ describe("runScenario — funding responsibility unconfirmed: Required Revenue u
     expect(unconfirmed.actualRevenue).toBe(confirmed.actualRevenue);
   });
 
-  it("throws for NEXT/ULTIMATELY-shaped input (forward pass needs a solved revenue) when funding is unconfirmed", () => {
-    const input = completeBusinessNowInput();
-    input.scenarioType = "NEXT";
+  it("NEXT with unconfirmed funding never throws — it degrades gracefully, leaving only the revenue-dependent waterfall unavailable", () => {
+    const confirmed = runScenario(completeNextInput(), { revisionId: "r1" });
+    const input = completeNextInput();
     input.lifeAssumption = { ...input.lifeAssumption, outsideFundingRetained: null };
-    expect(() => runScenario(input, { revisionId: "r" })).toThrow(/required revenue/);
+
+    let unconfirmed: ReturnType<typeof runScenario> | undefined;
+    expect(() => {
+      unconfirmed = runScenario(input, { revisionId: "r2" });
+    }).not.toThrow();
+
+    // Revenue-dependent — genuinely unavailable, never fabricated:
+    expect(unconfirmed!.requiredRevenue).toBeNull();
+    expect(unconfirmed!.requiredEconomicContribution).toBeNull();
+    expect(unconfirmed!.requiredVolumeByStream).toBeNull();
+    expect(unconfirmed!.operatingEconomicSurplus).toBeNull();
+    expect(unconfirmed!.distributableEconomicSurplus).toBeNull();
+    expect(unconfirmed!.ownerEconomicsResults).toBeNull();
+    expect(unconfirmed!.primaryOwnerBenefitVsRequirement).toBeNull();
+    expect(unconfirmed!.ownerSupportSignal).toBe("INSUFFICIENT_DATA");
+
+    // Independent of revenue — still fully calculable and identical to the confirmed run:
+    expect(unconfirmed!.perStreamEconomics).toEqual(confirmed.perStreamEconomics);
+    expect(unconfirmed!.weightedContributionMargin).toBe(confirmed.weightedContributionMargin);
+    expect(unconfirmed!.breakEvenFloor).toEqual(confirmed.breakEvenFloor);
+    expect(unconfirmed!.requiredRetainedBusinessCapital).toEqual(confirmed.requiredRetainedBusinessCapital);
+    expect(unconfirmed!.capacitySignal).toBe(confirmed.capacitySignal);
+    expect(unconfirmed!.timeSignal).toBe(confirmed.timeSignal);
+  });
+
+  it("ULTIMATELY-shaped input behaves identically to NEXT when funding is unconfirmed — the guard is generic to any scenario type that solves revenue backward", () => {
+    const input = completeNextInput();
+    input.scenarioType = "ULTIMATELY";
+    input.lifeAssumption = { ...input.lifeAssumption, outsideFundingRetained: null };
+    expect(() => runScenario(input, { revisionId: "r" })).not.toThrow();
+    const result = runScenario(input, { revisionId: "r" });
+    expect(result.requiredRevenue).toBeNull();
+    expect(result.perStreamEconomics.length).toBeGreaterThan(0);
   });
 });
 
@@ -348,6 +380,103 @@ describe("runScenario — delegation cost feeds the same waterfall as known oper
 
     expect(result.requiredRevenue).toBe(baseline.requiredRevenue);
     expect(result.confidenceFlags).toContainEqual({ field: "delegationItems", confidence: "INCOMPLETE" });
+  });
+});
+
+describe("runScenario — delegation/owner-labor double-counting guard", () => {
+  it("adding a DelegationItem never changes any OwnerEconomicsResult field — delegation cost and owner compensation are computed from entirely independent inputs", () => {
+    const baseline = runScenario(completeNextInput(), { revisionId: "r1" });
+
+    const withExtraDelegation = completeNextInput();
+    withExtraDelegation.delegationItems = [
+      ...withExtraDelegation.delegationItems,
+      { id: "sales-support", scenarioId: "ridgeline-next", functionLabel: "Sales support", delegationType: "CONTRACTOR", replacementCost: { value: "400.00", confidence: "STRONG_ESTIMATE" }, cadence: "MONTHLY" },
+    ];
+    const withExtra = runScenario(withExtraDelegation, { revisionId: "r2" });
+
+    expect(withExtra.ownerEconomicsResults).toEqual(baseline.ownerEconomicsResults);
+    // Sanity: the new delegation cost does move Required Revenue — proving
+    // this isn't a no-op test where nothing downstream reacts to anything.
+    expect(Number(withExtra.requiredRevenue)).toBeGreaterThan(Number(baseline.requiredRevenue));
+  });
+
+  it("case: owner stops performing the work and it is replaced — moving the SAME dollar amount from an owner's targeted labor compensation to a matching DelegationItem replacement cost conserves Required Revenue, it does not double it", () => {
+    // Owner-2 (non-primary) is targeted to be paid $500/mo for a function
+    // they currently perform themselves — "owner continues performing the
+    // work" case: labor compensation applies, no delegation cost.
+    const ownerContinues = completeNextInput();
+    ownerContinues.ownerEconomics = ownerContinues.ownerEconomics.map((o) =>
+      o.ownerId === "owner-2" ? { ...o, targetLaborCompensation: { value: "500.00", confidence: "STRONG_ESTIMATE" as const } } : o,
+    );
+    const continuesResult = runScenario(ownerContinues, { revisionId: "r1" });
+
+    // Now the owner stops performing that same function and it is replaced
+    // by a $500/mo contractor instead — labor compensation for that function
+    // drops to $0 and an equal-dollar DelegationItem takes its place.
+    const ownerDelegates = completeNextInput();
+    ownerDelegates.ownerEconomics = ownerDelegates.ownerEconomics.map((o) =>
+      o.ownerId === "owner-2" ? { ...o, targetLaborCompensation: undefined } : o,
+    );
+    ownerDelegates.delegationItems = [
+      ...ownerDelegates.delegationItems,
+      { id: "owner2-function", scenarioId: "ridgeline-next", functionLabel: "Owner-2's function", delegationType: "CONTRACTOR", replacementCost: { value: "500.00", confidence: "STRONG_ESTIMATE" }, cadence: "MONTHLY" },
+    ];
+    const delegatesResult = runScenario(ownerDelegates, { revisionId: "r2" });
+
+    // Same total dollar requirement either way — the $500 is charged exactly
+    // once, whichever bucket it lives in, never once as compensation AND
+    // again as replacement cost.
+    expect(delegatesResult.requiredRevenue).toBe(continuesResult.requiredRevenue);
+    expect(delegatesResult.requiredEconomicContribution).toBe(continuesResult.requiredEconomicContribution);
+
+    // The owner's own reported benefit correctly reflects that they no
+    // longer receive that $500 once it's delegated away.
+    const owner2Continues = continuesResult.ownerEconomicsResults!.find((o) => o.ownerId === "owner-2")!;
+    const owner2Delegates = delegatesResult.ownerEconomicsResults!.find((o) => o.ownerId === "owner-2")!;
+    expect(Number(owner2Continues.laborCompensation) - Number(owner2Delegates.laborCompensation)).toBe(500);
+  });
+
+  it("case: owner partially retains and partially delegates — both a real labor compensation AND a real delegation cost apply simultaneously for genuinely distinct functions, summing higher rather than one canceling the other", () => {
+    // Owner-2 keeps $500/mo compensation for a function they still perform...
+    const partial = completeNextInput();
+    partial.ownerEconomics = partial.ownerEconomics.map((o) =>
+      o.ownerId === "owner-2" ? { ...o, targetLaborCompensation: { value: "500.00", confidence: "STRONG_ESTIMATE" as const } } : o,
+    );
+    const retainedOnlyResult = runScenario(partial, { revisionId: "r1" });
+
+    // ...AND a wholly separate function is delegated for $300/mo — a
+    // genuinely distinct portion of work, not a re-labeling of the $500.
+    partial.delegationItems = [
+      ...partial.delegationItems,
+      { id: "distinct-function", scenarioId: "ridgeline-next", functionLabel: "A different function entirely", delegationType: "CONTRACTOR", replacementCost: { value: "300.00", confidence: "STRONG_ESTIMATE" }, cadence: "MONTHLY" },
+    ];
+    const bothResult = runScenario(partial, { revisionId: "r2" });
+
+    // Required Revenue must rise by exactly the incremental $300/mo cost
+    // (grossed up by the weighted contribution margin) — the retained $500
+    // labor compensation is untouched and not re-charged.
+    const marginalRevenueForDelegation = Number(bothResult.requiredRevenue) - Number(retainedOnlyResult.requiredRevenue);
+    expect(marginalRevenueForDelegation).toBeCloseTo(300 / 0.6, 2);
+
+    const owner2Retained = retainedOnlyResult.ownerEconomicsResults!.find((o) => o.ownerId === "owner-2")!;
+    const owner2Both = bothResult.ownerEconomicsResults!.find((o) => o.ownerId === "owner-2")!;
+    expect(owner2Both.laborCompensation).toBe(owner2Retained.laborCompensation); // unchanged — the $500 is untouched
+  });
+
+  it("unknown replacement cost stays INCOMPLETE and produces an 'at least' floor — never a fabricated market rate", () => {
+    const input = completeNextInput();
+    input.delegationItems = [
+      ...input.delegationItems,
+      { id: "unknown-function", scenarioId: "ridgeline-next", functionLabel: "Not yet quoted", delegationType: "UNSURE", replacementCost: null, cadence: "MONTHLY" },
+    ];
+    const withUnknown = runScenario(input, { revisionId: "r1" });
+    const baseline = runScenario(completeNextInput(), { revisionId: "r2" });
+
+    // The unknown cost contributes nothing to the figure (never guessed) —
+    // Required Revenue is identical to the baseline without that item...
+    expect(withUnknown.requiredRevenue).toBe(baseline.requiredRevenue);
+    // ...but the result is flagged so it reads as a floor, not a complete figure.
+    expect(withUnknown.confidenceFlags).toContainEqual({ field: "delegationItems", confidence: "INCOMPLETE" });
   });
 });
 

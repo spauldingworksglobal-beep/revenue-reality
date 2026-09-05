@@ -325,6 +325,33 @@ describe("resolveNextLifeCategories", () => {
     ]);
     expect(formatMoney(computeLifeRequirement(next, "NEXT").monthly)).toBe("2300.00");
   });
+
+  it("snapshot safety: resolving against a materialized copy is immune to later mutation of the source CURRENT/INTENDED arrays — proves NEXT initialization must snapshot, not hold a live reference", () => {
+    // Simulates next-store.tsx's initializeFromNow(): materialize CURRENT/
+    // INTENDED into their own arrays/objects at one point in time.
+    const snapshotCurrent = current.map((c) => ({ ...c }));
+    const snapshotIntended = intended.map((c) => ({ ...c }));
+
+    const resolvedAtInit = resolveNextLifeCategories(snapshotCurrent, snapshotIntended, []);
+    expect(resolvedAtInit.find((c) => c.id === "housing")!.nextAmount?.value).toBe("2000.00");
+
+    // A later "CURRENT" edit — e.g. the owner goes back and changes housing
+    // in Current Life Reality — must never reach the frozen snapshot.
+    const mutatedCurrent = current.map((c) => (c.id === "housing" ? { ...c, currentAmount: { value: "9999.00", confidence: "EXACT" as const } } : c));
+    const mutatedIntended = intended.map((c) => (c.id === "housing" ? { ...c, intendedAmount: { value: "8888.00", confidence: "EXACT" as const } } : c));
+
+    // Re-resolving against the frozen snapshot (not the mutated live data)
+    // must reproduce the exact same NEXT result.
+    const resolvedAfterMutation = resolveNextLifeCategories(snapshotCurrent, snapshotIntended, []);
+    expect(resolvedAfterMutation).toEqual(resolvedAtInit);
+    expect(resolvedAfterMutation.find((c) => c.id === "housing")!.nextAmount?.value).toBe("2000.00");
+
+    // Sanity check: had the snapshot not been taken and the live arrays used
+    // instead, the mutation WOULD have changed the result — confirming this
+    // test actually exercises the bug it's guarding against.
+    const resolvedFromLiveMutatedData = resolveNextLifeCategories(mutatedCurrent, mutatedIntended, []);
+    expect(resolvedFromLiveMutatedData.find((c) => c.id === "housing")!.nextAmount?.value).toBe("9999.00");
+  });
 });
 
 describe("resolveNextSecurityItems", () => {

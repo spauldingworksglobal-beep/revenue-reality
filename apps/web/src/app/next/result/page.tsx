@@ -38,7 +38,6 @@ const IMPROVEMENT_LABELS: Record<NextImprovementType, string> = {
 };
 
 const MISSING_LABELS: Record<NextScenarioMissingReason, { label: string; href: string }> = {
-  NEXT_FUNDING_CONFIRMATION: { label: "How much of your NEXT life the business is responsible for funding", href: "/next/life" },
   NO_USABLE_REVENUE_STREAM: { label: "At least one revenue stream with a price and a Cost of Delivery entered for NEXT", href: "/next/streams" },
 };
 
@@ -74,15 +73,20 @@ export default function NextResultPage() {
   const streamLabelById = useMemo(() => new Map(revenueStreams.map((s) => [s.id, s.name || "Unnamed stream"])), [revenueStreams]);
   const ownerLabelById = useMemo(() => new Map(owners.map((o) => [o.id, o.label || "Unnamed owner"])), [owners]);
 
+  // NOW's own comparison still reads live Current/Intended (NOW has no
+  // snapshot — it always reflects the live state, same as elsewhere).
   const intendedCategories = useMemo(() => buildIntendedLifeCategories(lifeProfileId, currentCategories, lifeChanges), [lifeProfileId, currentCategories, lifeChanges]);
   const intendedSecurity = useMemo(() => buildIntendedSecurityItems(lifeProfileId, currentSecurity, securityChanges), [lifeProfileId, currentSecurity, securityChanges]);
+  // NEXT resolves against its own frozen snapshot (captured at
+  // initializeFromNow) — never live Current/Intended — so a later edit to
+  // CURRENT life/security can't silently change an already-built NEXT model.
   const nextCategories = useMemo(
-    () => resolveNextLifeCategories(currentCategories, intendedCategories, next.nextLifeCategorySelections),
-    [currentCategories, intendedCategories, next.nextLifeCategorySelections],
+    () => resolveNextLifeCategories(next.snapshotCurrentCategories, next.snapshotIntendedCategories, next.nextLifeCategorySelections),
+    [next.snapshotCurrentCategories, next.snapshotIntendedCategories, next.nextLifeCategorySelections],
   );
   const nextSecurityItems = useMemo(
-    () => resolveNextSecurityItems(currentSecurity, intendedSecurity, next.nextSecurityItemSelections),
-    [currentSecurity, intendedSecurity, next.nextSecurityItemSelections],
+    () => resolveNextSecurityItems(next.snapshotCurrentSecurity, next.snapshotIntendedSecurity, next.nextSecurityItemSelections),
+    [next.snapshotCurrentSecurity, next.snapshotIntendedSecurity, next.nextSecurityItemSelections],
   );
 
   const nextAssembly = useMemo(
@@ -257,6 +261,20 @@ export default function NextResultPage() {
         </div>
       )}
 
+      {result.requiredRevenue === null && (
+        <div className="flex flex-col gap-2 rounded-md border border-accent/40 bg-accent/5 p-4 text-sm">
+          <p className="font-medium">Required Revenue isn&rsquo;t available yet — everything below it still is.</p>
+          <p className="text-ink/70">
+            NEXT hasn&rsquo;t confirmed how much of this life the business is responsible for funding, so Required
+            Revenue and the owner-support comparison can&rsquo;t be solved truthfully yet. Stream economics, margins,
+            operating costs, retained capital, capacity, and time all still reflect what&rsquo;s known below.
+          </p>
+          <Link href="/next/life" className="w-fit text-xs font-medium text-accent underline">
+            Confirm NEXT&rsquo;s business-funded share to unlock Required Revenue
+          </Link>
+        </div>
+      )}
+
       {/* What becomes possible */}
       <section className="rounded-lg border border-ink/15 bg-white p-4">
         <h2 className="text-sm font-semibold">What becomes possible</h2>
@@ -277,7 +295,7 @@ export default function NextResultPage() {
           <dt className="text-ink/60">NEXT personal economic requirement</dt>
           <dd>${nextAssembly.input.lifeAssumption.lifeRequirement} living + ${nextAssembly.input.lifeAssumption.securityRequirement} security</dd>
           <dt className="text-ink/60">NEXT business-funded requirement</dt>
-          <dd>{result.primaryOwnerBenefitVsRequirement ? `$${result.primaryOwnerBenefitVsRequirement.businessFundedPersonalEconomicRequirement}/mo` : "—"}</dd>
+          <dd>{result.primaryOwnerBenefitVsRequirement ? `$${result.primaryOwnerBenefitVsRequirement.businessFundedPersonalEconomicRequirement}/mo` : "Needs funding confirmation"}</dd>
           <dt className="text-ink/60">NEXT owner hours (primary)</dt>
           <dd>{next.nextBusinessHoursWeek.confidence === "INCOMPLETE" ? "not set" : `${next.nextBusinessHoursWeek.value}/week`}</dd>
         </dl>
@@ -303,13 +321,17 @@ export default function NextResultPage() {
             Required sales: {result.requiredVolumeByStream.map((v) => `${v.volume} ${streamLabelById.get(v.streamId) ?? v.streamId}`).join(", ")}
           </p>
         )}
-        <ul className="mt-2 flex flex-col gap-1 text-sm text-ink/70">
-          {result.ownerEconomicsResults.map((r) => (
-            <li key={r.ownerId}>
-              {ownerLabelById.get(r.ownerId) ?? "Owner"}: ${r.totalOwnerEconomicBenefit} total economic benefit (labor ${r.laborCompensation} + distribution ${r.profitDistribution})
-            </li>
-          ))}
-        </ul>
+        {result.ownerEconomicsResults ? (
+          <ul className="mt-2 flex flex-col gap-1 text-sm text-ink/70">
+            {result.ownerEconomicsResults.map((r) => (
+              <li key={r.ownerId}>
+                {ownerLabelById.get(r.ownerId) ?? "Owner"}: ${r.totalOwnerEconomicBenefit} total economic benefit (labor ${r.laborCompensation} + distribution ${r.profitDistribution})
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-ink/50">Owner economic benefit needs Required Revenue first — see above.</p>
+        )}
       </section>
 
       {/* What changes from NOW */}

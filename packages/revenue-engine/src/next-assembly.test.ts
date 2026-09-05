@@ -115,10 +115,28 @@ describe("buildNextScenarioInput — complete NEXT snapshot", () => {
 });
 
 describe("buildNextScenarioInput — incomplete data never crashes, never fabricates", () => {
-  it("reports INCOMPLETE when NEXT's funding responsibility hasn't been confirmed — Required Revenue is NEXT's whole point, so this is a hard requirement here (unlike NOW)", () => {
+  it("does NOT gate the whole NEXT result when funding responsibility hasn't been confirmed — it flows through as null instead, same as NOW", () => {
     const built = buildNextScenarioInput(baseParams({ nextFundingConfirmation: null }));
-    expect(built.status).toBe("INCOMPLETE");
-    if (built.status === "INCOMPLETE") expect(built.missing).toContain("NEXT_FUNDING_CONFIRMATION");
+    expect(built.status).toBe("READY");
+    if (built.status !== "READY") return;
+    expect(built.input.lifeAssumption.outsideFundingRetained).toBeNull();
+  });
+
+  it("an unconfirmed funding responsibility still produces a real result via runScenario — margins, opex, retained capital, and signals stay available; only Required Revenue and the owner-benefit comparison become unavailable", () => {
+    const built = buildNextScenarioInput(baseParams({ nextFundingConfirmation: null }));
+    if (built.status !== "READY") throw new Error("expected READY");
+    const result = runScenario(built.input, { revisionId: "r" });
+
+    expect(result.requiredRevenue).toBeNull();
+    expect(result.primaryOwnerBenefitVsRequirement).toBeNull();
+    expect(result.ownerSupportSignal).toBe("INSUFFICIENT_DATA");
+
+    expect(result.perStreamEconomics.length).toBeGreaterThan(0);
+    expect(result.perStreamEconomics[0]!.grossMargin).toBe("0.6");
+    expect(result.breakEvenFloor).not.toBeNull();
+    expect(result.requiredRetainedBusinessCapital.total).not.toBe("0.00");
+    expect(result.capacitySignal).toBe("NEITHER"); // PROBABLE demand, no listed constraints
+    expect(result.timeSignal).toBe("FITS");
   });
 
   it("PERCENT funding mode: the confirmed percentage is preserved and its dollar value scales with the NEXT personal economic requirement", () => {
@@ -184,7 +202,7 @@ describe("buildNextScenarioInput — incomplete data never crashes, never fabric
 });
 
 describe("buildNextScenarioInput — NEXT can start from HCF's known-but-incomplete NOW facts without silently filling the gaps", () => {
-  it("carries HCF's known price/COGS/opex forward into a NEXT snapshot, but stays INCOMPLETE while ownership and funding remain unconfirmed", () => {
+  it("carries HCF's known price/COGS/opex forward into a NEXT snapshot and stays useful (margins, break-even) while ownership, distribution rule, and funding remain unconfirmed", () => {
     const hcfOwners: Owner[] = [
       { id: "owner-1", businessId: "hcf", label: "Jessica", isPrimaryRespondent: true, ownershipPercent: null },
       { id: "owner-2", businessId: "hcf", label: "Asha", isPrimaryRespondent: false, ownershipPercent: null },
@@ -208,7 +226,26 @@ describe("buildNextScenarioInput — NEXT can start from HCF's known-but-incompl
         nextFundingConfirmation: null, // never confirmed
       }),
     );
+    expect(built.status).toBe("READY");
+    if (built.status !== "READY") return;
+    expect(built.input.lifeAssumption.outsideFundingRetained).toBeNull();
+    expect(built.unknownOwnershipOwnerIds.sort()).toEqual(["owner-1", "owner-2"]);
+
+    const result = runScenario(built.input, { revisionId: "r" });
+    expect(result.perStreamEconomics[0]!.grossMargin).toBe("0.463636");
+    expect(result.requiredRevenue).toBeNull();
+  });
+
+  it("still reports INCOMPLETE when HCF's known stream can't even be built (no price/COGS entered for NEXT yet)", () => {
+    const hcfStreams: RevenueStream[] = [{ id: "chocolate-bar", businessId: "hcf", name: "Chocolate bar", description: "wholesale chocolate bars", active: true }];
+    const built = buildNextScenarioInput(
+      baseParams({
+        activeStreams: hcfStreams,
+        streamInputs: [{ streamId: "chocolate-bar", price: null, volume: null, mixWeightOverride: null, cogs: null, otherVariableCosts: [] }],
+        nextFundingConfirmation: null,
+      }),
+    );
     expect(built.status).toBe("INCOMPLETE");
-    if (built.status === "INCOMPLETE") expect(built.missing).toEqual(["NEXT_FUNDING_CONFIRMATION"]);
+    if (built.status === "INCOMPLETE") expect(built.missing).toEqual(["NO_USABLE_REVENUE_STREAM"]);
   });
 });

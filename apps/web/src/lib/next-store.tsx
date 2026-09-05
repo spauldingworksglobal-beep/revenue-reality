@@ -6,12 +6,21 @@ import type {
   CapitalRequirementItem,
   ConfidenceValue,
   DelegationItem,
+  LifeCategory,
   Money,
   OperatingCost,
   Percent,
   ScenarioDistributionPolicy,
+  SecurityItem,
 } from "@revenue-reality/domain";
-import type { BusinessFundedConfirmation, NextLifeCategorySelection, NextSecurityItemSelection, NextStreamAssemblyInput } from "@revenue-reality/revenue-engine";
+import {
+  buildIntendedLifeCategories,
+  buildIntendedSecurityItems,
+  type BusinessFundedConfirmation,
+  type NextLifeCategorySelection,
+  type NextSecurityItemSelection,
+  type NextStreamAssemblyInput,
+} from "@revenue-reality/revenue-engine";
 import { useNow, type NowOwnerInput } from "./now-store";
 import { useLifeReality } from "./life-store";
 
@@ -73,6 +82,18 @@ interface NextContextValue {
   initializeFromNow: () => void;
 
   // ---- NEXT Life Reality (intermediate, between Current and Intended) ----
+  /**
+   * Frozen at initializeFromNow() — the CURRENT/INTENDED life and security
+   * data as they stood at that moment, materialized into NEXT's own state.
+   * resolveNextLifeCategories/resolveNextSecurityItems and the reference
+   * display on /next/life and /next/result must read from these, never from
+   * live useLifeReality() data, so a later edit to CURRENT can never
+   * silently change an already-initialized NEXT model.
+   */
+  snapshotCurrentCategories: LifeCategory[];
+  snapshotIntendedCategories: LifeCategory[];
+  snapshotCurrentSecurity: SecurityItem[];
+  snapshotIntendedSecurity: SecurityItem[];
   nextLifeCategorySelections: NextLifeCategorySelection[];
   setNextLifeCategorySelection: (selection: NextLifeCategorySelection) => void;
   nextSecurityItemSelections: NextSecurityItemSelection[];
@@ -132,6 +153,11 @@ export function NextProvider({ children }: { children: ReactNode }) {
 
   const [hasInitializedFromNow, setHasInitializedFromNow] = useState(false);
 
+  const [snapshotCurrentCategories, setSnapshotCurrentCategories] = useState<LifeCategory[]>([]);
+  const [snapshotIntendedCategories, setSnapshotIntendedCategories] = useState<LifeCategory[]>([]);
+  const [snapshotCurrentSecurity, setSnapshotCurrentSecurity] = useState<SecurityItem[]>([]);
+  const [snapshotIntendedSecurity, setSnapshotIntendedSecurity] = useState<SecurityItem[]>([]);
+
   const [nextLifeCategorySelections, setNextLifeCategorySelections] = useState<NextLifeCategorySelection[]>([]);
   const [nextSecurityItemSelections, setNextSecurityItemSelections] = useState<NextSecurityItemSelection[]>([]);
   const [nextFundingConfirmation, setNextFundingConfirmation] = useState<BusinessFundedConfirmation | null>(null);
@@ -155,6 +181,14 @@ export function NextProvider({ children }: { children: ReactNode }) {
     if (hasInitializedFromNow) return;
     // Value copies only — new arrays/objects, never a reference back into
     // `now`'s own state. Editing NOW after this point cannot reach NEXT.
+    // Life/Security are materialized here too: CURRENT/INTENDED are computed
+    // once, right now, and frozen into NEXT's own state, so a category the
+    // owner never customizes in NEXT resolves against this snapshot forever
+    // — not against whatever CURRENT happens to be the next time it renders.
+    setSnapshotCurrentCategories(life.currentCategories.map((c) => ({ ...c })));
+    setSnapshotIntendedCategories(buildIntendedLifeCategories(life.lifeProfileId, life.currentCategories, life.lifeChanges));
+    setSnapshotCurrentSecurity(life.currentSecurity.map((s) => ({ ...s })));
+    setSnapshotIntendedSecurity(buildIntendedSecurityItems(life.lifeProfileId, life.currentSecurity, life.securityChanges));
     setStreamInputs(now.streamInputs.map((s) => ({ ...s })));
     setOperatingCostsState(now.operatingCosts.map((c) => ({ ...c })));
     setOpexListIsPartial(now.opexListIsPartial);
@@ -193,6 +227,11 @@ export function NextProvider({ children }: { children: ReactNode }) {
 
       hasInitializedFromNow,
       initializeFromNow,
+
+      snapshotCurrentCategories,
+      snapshotIntendedCategories,
+      snapshotCurrentSecurity,
+      snapshotIntendedSecurity,
 
       nextLifeCategorySelections,
       setNextLifeCategorySelection: (selection) =>
@@ -254,6 +293,10 @@ export function NextProvider({ children }: { children: ReactNode }) {
       primaryImprovementOtherLabel,
       supportingImprovements,
       hasInitializedFromNow,
+      snapshotCurrentCategories,
+      snapshotIntendedCategories,
+      snapshotCurrentSecurity,
+      snapshotIntendedSecurity,
       nextLifeCategorySelections,
       nextSecurityItemSelections,
       nextFundingConfirmation,
