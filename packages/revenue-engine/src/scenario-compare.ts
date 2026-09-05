@@ -39,14 +39,114 @@ export interface CompareLabels {
 }
 
 /**
- * "Required Revenue: at least $X" (Build Spec Milestone 6 §8) — true when one
- * or more delegation/replacement costs aren't known yet, making the solved
- * figure a floor rather than a complete number. Centralizes the exact rule
- * already used ad hoc on now/next/ultimately result pages so COMPARE never
- * drifts from it.
+ * Why a Required Revenue figure is a lower bound rather than an exact
+ * number — every known reason, not just one. A confidence qualifier (rough
+ * estimate, equal-weight sales mix) is a different concept from a
+ * mathematical bound and never appears here (Build Spec Milestone 8
+ * follow-up §3).
  */
+export type RequiredRevenueFloorReason = "DELEGATION_COST_UNKNOWN" | "OPEX_PARTIAL";
+
+/**
+ * EXACT(value) vs LOWER_BOUND(value): a floor-qualified Required Revenue is
+ * not "an exact number with different display copy" — it's a genuinely
+ * different mathematical object, and comparisons must respect that (Build
+ * Spec Milestone 8 follow-up §1). UNKNOWN means the underlying calculation
+ * never ran at all (funding responsibility unconfirmed) — never conflated
+ * with a lower bound.
+ */
+export type RequiredRevenueBound =
+  | { status: "UNKNOWN" }
+  | { status: "EXACT"; value: Money }
+  | { status: "LOWER_BOUND"; value: Money; reasons: RequiredRevenueFloorReason[] };
+
+/**
+ * Classifies a scenario's Required Revenue as EXACT, a LOWER_BOUND (with
+ * every reason it's a floor), or UNKNOWN (funding responsibility never
+ * confirmed — never fabricated as $0 or as a floor). Known costs still
+ * provide a useful floor even when OPEX is explicitly marked partial or a
+ * delegation/replacement cost isn't known yet — Required Revenue is never
+ * nulled out for either reason (Build Spec Milestone 8 follow-up §2).
+ */
+export function classifyRequiredRevenue(result: ScenarioResult): RequiredRevenueBound {
+  if (result.requiredRevenue === null) return { status: "UNKNOWN" };
+  const reasons: RequiredRevenueFloorReason[] = [];
+  if (result.confidenceFlags.some((f) => f.field === "delegationItems" && f.confidence === "INCOMPLETE")) {
+    reasons.push("DELEGATION_COST_UNKNOWN");
+  }
+  if (result.confidenceFlags.some((f) => f.field === "operatingCosts" && f.confidence === "INCOMPLETE")) {
+    reasons.push("OPEX_PARTIAL");
+  }
+  if (reasons.length > 0) return { status: "LOWER_BOUND", value: result.requiredRevenue, reasons };
+  return { status: "EXACT", value: result.requiredRevenue };
+}
+
+/** True if a Required Revenue figure is a lower bound for any reason — used where only the yes/no matters, not why. */
 export function requiredRevenueIsFloor(result: ScenarioResult): boolean {
-  return result.confidenceFlags.some((f) => f.field === "delegationItems" && f.confidence === "INCOMPLETE");
+  return classifyRequiredRevenue(result).status === "LOWER_BOUND";
+}
+
+function boundText(bound: RequiredRevenueBound): string {
+  if (bound.status === "UNKNOWN") return "not yet known";
+  if (bound.status === "LOWER_BOUND") return `at least $${bound.value}/mo`;
+  return `$${bound.value}/mo`;
+}
+
+/**
+ * The result of comparing two RequiredRevenueBounds — deliberately not just
+ * a Money delta. A lower bound only tells you the true value is at or above
+ * it; it says nothing about how far above. Comparisons must respect that
+ * (Build Spec Milestone 8 follow-up §1, §4):
+ *
+ *  EXACT vs EXACT             → exact delta, any direction
+ *  EXACT(a) vs LOWER_BOUND(b) → guaranteed "at least" INCREASE only when
+ *                               b (the floor) already exceeds a — the true
+ *                               value can only be b or higher. Otherwise
+ *                               indeterminate: b's true value could land on
+ *                               either side of a.
+ *  LOWER_BOUND(a) vs EXACT(b) → guaranteed "at least" DECREASE only when a
+ *                               (the floor) already exceeds b, by the same
+ *                               logic mirrored. Otherwise indeterminate.
+ *  LOWER_BOUND vs LOWER_BOUND → never orderable from the floors alone —
+ *                               always indeterminate, regardless of which
+ *                               floor is larger.
+ *  either UNKNOWN             → unavailable, no numeric claim at all.
+ */
+export type RequiredRevenueComparison =
+  | { kind: "UNAVAILABLE" }
+  | { kind: "INDETERMINATE" }
+  | { kind: "EXACT_DELTA"; deltaValue: Money; direction: "INCREASE" | "DECREASE" | "NONE" }
+  | { kind: "GUARANTEED_MINIMUM_DELTA"; deltaValue: Money; direction: "INCREASE" | "DECREASE" };
+
+export function compareRequiredRevenueBounds(from: RequiredRevenueBound, to: RequiredRevenueBound): RequiredRevenueComparison {
+  if (from.status === "UNKNOWN" || to.status === "UNKNOWN") return { kind: "UNAVAILABLE" };
+
+  if (from.status === "EXACT" && to.status === "EXACT") {
+    const delta = subtract(parseMoney(to.value), parseMoney(from.value));
+    if (delta.isZero()) return { kind: "EXACT_DELTA", deltaValue: formatMoney(delta), direction: "NONE" };
+    return { kind: "EXACT_DELTA", deltaValue: formatMoney(delta.abs()), direction: delta.isPositive() ? "INCREASE" : "DECREASE" };
+  }
+
+  if (from.status === "EXACT" && to.status === "LOWER_BOUND") {
+    // to's true value is >= to.value. Only guaranteed to exceed `from` when
+    // the floor itself already does — never claim a decrease here, since a
+    // lower bound places no ceiling on how much higher the true value runs.
+    const delta = subtract(parseMoney(to.value), parseMoney(from.value));
+    if (delta.isPositive()) return { kind: "GUARANTEED_MINIMUM_DELTA", deltaValue: formatMoney(delta), direction: "INCREASE" };
+    return { kind: "INDETERMINATE" };
+  }
+
+  if (from.status === "LOWER_BOUND" && to.status === "EXACT") {
+    // Mirrors the case above: from's true value is >= from.value, so it's
+    // only guaranteed to exceed `to` when the floor itself already does.
+    const delta = subtract(parseMoney(from.value), parseMoney(to.value));
+    if (delta.isPositive()) return { kind: "GUARANTEED_MINIMUM_DELTA", deltaValue: formatMoney(delta), direction: "DECREASE" };
+    return { kind: "INDETERMINATE" };
+  }
+
+  // LOWER_BOUND vs LOWER_BOUND: neither true value has a ceiling, so no
+  // ordering can ever be inferred from the floors alone (§1).
+  return { kind: "INDETERMINATE" };
 }
 
 /**
@@ -66,13 +166,18 @@ export interface RequiredRevenueDisplay {
   text: string;
 }
 
-/** Floor-preserving display text for Required Revenue — never collapses "At least $X" to a bare number. */
+const FLOOR_REASON_TEXT: Record<RequiredRevenueFloorReason, string> = {
+  DELEGATION_COST_UNKNOWN: "one or more replacement labor costs aren't known yet",
+  OPEX_PARTIAL: "the operating cost list is known to be incomplete",
+};
+
+/** Floor-preserving display text for Required Revenue — never collapses "At least $X" to a bare number, and always names every reason it's a floor. */
 export function displayRequiredRevenue(result: ScenarioResult): RequiredRevenueDisplay {
-  if (result.requiredRevenue === null) return { status: "UNKNOWN", text: "Not yet known" };
-  const text = requiredRevenueIsFloor(result)
-    ? `At least $${result.requiredRevenue} — one or more replacement labor costs aren't known yet`
-    : `$${result.requiredRevenue}`;
-  return { status: "KNOWN", text };
+  const bound = classifyRequiredRevenue(result);
+  if (bound.status === "UNKNOWN") return { status: "UNKNOWN", text: "Not yet known" };
+  if (bound.status === "EXACT") return { status: "KNOWN", text: `$${bound.value}` };
+  const reasons = bound.reasons.map((r) => FLOOR_REASON_TEXT[r]).join(" and ");
+  return { status: "KNOWN", text: `At least $${bound.value} — ${reasons}` };
 }
 
 /** Unknown (INCOMPLETE confidence) is never displayed as "0/week" — it's a distinct unanswered state. */
@@ -117,27 +222,45 @@ export interface MaterialChange {
 // ---- individual dimension comparisons (internal — detectMaterialChanges composes these) ----
 
 function compareRequiredRevenue(from: ScenarioCompareSnapshot, to: ScenarioCompareSnapshot): MaterialChange | null {
-  const fromRR = from.result.requiredRevenue;
-  const toRR = to.result.requiredRevenue;
-  if (fromRR === null || toRR === null) {
-    if (fromRR === null && toRR === null) return null;
+  const fromBound = classifyRequiredRevenue(from.result);
+  const toBound = classifyRequiredRevenue(to.result);
+  const cmp = compareRequiredRevenueBounds(fromBound, toBound);
+
+  if (cmp.kind === "UNAVAILABLE") {
     return {
       id: "required-revenue",
       category: "REVENUE",
       text: `Not enough information to compare Required Revenue between ${from.scenarioType} and ${to.scenarioType} — funding responsibility hasn't been confirmed for at least one of them.`,
     };
   }
-  const delta = subtract(parseMoney(toRR), parseMoney(fromRR));
-  if (delta.isZero()) return null;
-  const isFloor = requiredRevenueIsFloor(from.result) || requiredRevenueIsFloor(to.result);
-  const dir = delta.isPositive() ? "more" : "less";
-  const qualifier = isFloor ? "at least " : "";
-  const basis = isFloor ? ", based on currently known costs" : "";
-  return {
-    id: "required-revenue",
-    category: "REVENUE",
-    text: `${to.scenarioType} requires ${qualifier}$${formatMoney(delta.abs())}/mo ${dir} in Required Revenue than ${from.scenarioType}${basis}.`,
-  };
+
+  if (cmp.kind === "EXACT_DELTA") {
+    if (cmp.direction === "NONE") return null;
+    const dir = cmp.direction === "INCREASE" ? "more" : "less";
+    return {
+      id: "required-revenue",
+      category: "REVENUE",
+      text: `${to.scenarioType} requires $${cmp.deltaValue}/mo ${dir} in Required Revenue than ${from.scenarioType}.`,
+    };
+  }
+
+  if (cmp.kind === "GUARANTEED_MINIMUM_DELTA") {
+    const dir = cmp.direction === "INCREASE" ? "more" : "less";
+    return {
+      id: "required-revenue",
+      category: "REVENUE",
+      text: `${to.scenarioType} requires at least $${cmp.deltaValue}/mo ${dir} in Required Revenue than ${from.scenarioType}, based on currently known costs.`,
+    };
+  }
+
+  // INDETERMINATE: both bounds are known, but at least one is a floor that
+  // doesn't already exceed the other side — the true values could land in
+  // either order, so no delta or direction is claimed (§1, §4).
+  const bothFloors = fromBound.status === "LOWER_BOUND" && toBound.status === "LOWER_BOUND";
+  const text = bothFloors
+    ? `${from.scenarioType}'s Required Revenue is ${boundText(fromBound)}; ${to.scenarioType}'s is ${boundText(toBound)}. Both are floors — the exact difference is not yet known.`
+    : `${from.scenarioType}'s Required Revenue is ${boundText(fromBound)}; ${to.scenarioType}'s is ${boundText(toBound)}. The exact difference cannot be determined until ${fromBound.status === "LOWER_BOUND" ? from.scenarioType : to.scenarioType}'s missing costs are known.`;
+  return { id: "required-revenue", category: "REVENUE", text };
 }
 
 function compareBusinessFundedRequirement(from: ScenarioCompareSnapshot, to: ScenarioCompareSnapshot): MaterialChange | null {
@@ -519,11 +642,20 @@ export function collectMaterialAssumptions(snapshot: ScenarioCompareSnapshot): A
       text: `${snapshot.scenarioType}'s revenue split between streams isn't confirmed — an equal-weight split is used as a temporary modeling assumption.`,
     });
   }
-  if (requiredRevenueIsFloor(snapshot.result)) {
-    notes.push({
-      id: "delegation-cost-unknown",
-      text: `${snapshot.scenarioType}'s Required Revenue is a floor — one or more replacement/delegation costs aren't known yet.`,
-    });
+  const requiredRevenueBound = classifyRequiredRevenue(snapshot.result);
+  if (requiredRevenueBound.status === "LOWER_BOUND") {
+    if (requiredRevenueBound.reasons.includes("DELEGATION_COST_UNKNOWN")) {
+      notes.push({
+        id: "delegation-cost-unknown",
+        text: `${snapshot.scenarioType}'s Required Revenue is a floor — one or more replacement/delegation costs aren't known yet.`,
+      });
+    }
+    if (requiredRevenueBound.reasons.includes("OPEX_PARTIAL")) {
+      notes.push({
+        id: "opex-partial-floor",
+        text: `${snapshot.scenarioType}'s Required Revenue is a floor — the operating cost list is known to be incomplete.`,
+      });
+    }
   }
   if (snapshot.opexListIsPartial) {
     notes.push({ id: "opex-partial", text: `${snapshot.scenarioType}'s operating cost list is known to be incomplete.` });

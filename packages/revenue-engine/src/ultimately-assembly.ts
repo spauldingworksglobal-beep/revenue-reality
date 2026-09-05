@@ -47,6 +47,8 @@ export interface BuildUltimatelyScenarioInputParams {
   activeStreams: RevenueStream[];
   streamInputs: UltimatelyStreamAssemblyInput[];
   operatingCosts: OperatingCost[];
+  /** The owner's own explicit "this isn't everything" flag — never derived from the list itself. Propagated into the result's confidenceFlags by withUltimatelyResultCaveats so Required Revenue is never shown as exact when the known-cost list is admittedly incomplete. */
+  opexListIsPartial: boolean;
   ownerInputs: UltimatelyOwnerAssemblyInput[];
   /**
    * The owner's already-defined Intended Time Reality (Milestone 3) —
@@ -99,6 +101,8 @@ export type UltimatelyScenarioAssemblyResult =
       mixWeightFallbackApplied: boolean;
       /** Active streams excluded because price and/or Cost of Delivery haven't been entered for ULTIMATELY yet. */
       excludedStreamIds: ID[];
+      /** Echoes params.opexListIsPartial — see withUltimatelyResultCaveats. */
+      opexListIsPartial: boolean;
     }
   | { status: "INCOMPLETE"; missing: UltimatelyScenarioMissingReason[] };
 
@@ -212,20 +216,30 @@ export function buildUltimatelyScenarioInput(params: BuildUltimatelyScenarioInpu
     unknownOwnershipOwnerIds,
     mixWeightFallbackApplied: streamAssembly.mixWeightFallbackApplied,
     excludedStreamIds: streamAssembly.excludedStreamIds,
+    opexListIsPartial: params.opexListIsPartial,
   };
 }
 
-/** Mirrors withNextResultCaveats — surfaces the sales-mix modeling assumption in confidenceFlags. */
+/**
+ * Mirrors withNextResultCaveats: surfaces the sales-mix modeling assumption
+ * and a partial operating-cost list in confidenceFlags — the latter means
+ * Required Revenue is a floor, not an unqualified number (Build Spec
+ * Milestone 8 follow-up §2).
+ */
 export function withUltimatelyResultCaveats(
   result: ScenarioResult,
   assembly: Extract<UltimatelyScenarioAssemblyResult, { status: "READY" }>,
 ): ScenarioResult {
-  if (!assembly.mixWeightFallbackApplied) return result;
+  const extraFlags: ScenarioResult["confidenceFlags"] = [];
+  if (assembly.mixWeightFallbackApplied) {
+    extraFlags.push({ field: "salesMix", confidence: "ROUGH_ESTIMATE" });
+  }
+  if (assembly.opexListIsPartial && !result.confidenceFlags.some((f) => f.field === "operatingCosts")) {
+    extraFlags.push({ field: "operatingCosts", confidence: "INCOMPLETE" });
+  }
+  if (extraFlags.length === 0) return result;
   return {
     ...result,
-    confidenceFlags: assembleConfidenceFlags([
-      ...result.confidenceFlags,
-      { field: "salesMix", confidence: "ROUGH_ESTIMATE" },
-    ]),
+    confidenceFlags: assembleConfidenceFlags([...result.confidenceFlags, ...extraFlags]),
   };
 }

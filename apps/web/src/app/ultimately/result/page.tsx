@@ -9,6 +9,7 @@ import {
   buildNextScenarioInput,
   buildNowScenarioInput,
   buildUltimatelyScenarioInput,
+  displayRequiredRevenue,
   formatMoney,
   resolveNextLifeCategories,
   resolveNextSecurityItems,
@@ -68,6 +69,7 @@ export default function UltimatelyResultPage() {
         activeStreams,
         streamInputs: ultimately.streamInputs,
         operatingCosts: ultimately.operatingCosts,
+        opexListIsPartial: ultimately.opexListIsPartial,
         ownerInputs: ultimately.ownerInputs,
         ultimateBusinessHoursWeek: ultimately.snapshotUltimateBusinessHoursWeek,
         intendedAvailableHoursWeek: ultimately.snapshotIntendedAvailableHoursWeek,
@@ -110,6 +112,7 @@ export default function UltimatelyResultPage() {
             activeStreams,
             streamInputs: next.streamInputs,
             operatingCosts: next.operatingCosts,
+            opexListIsPartial: next.opexListIsPartial,
             ownerInputs: next.ownerInputs,
             nextBusinessHoursWeek: next.nextBusinessHoursWeek,
             nextAvailableHoursWeek: next.nextAvailableHoursWeek,
@@ -137,6 +140,7 @@ export default function UltimatelyResultPage() {
         activeStreams,
         streamInputs: now.streamInputs,
         operatingCosts: now.operatingCosts,
+        opexListIsPartial: now.opexListIsPartial,
         ownerInputs: now.ownerInputs,
         currentBusinessHoursWeek,
         currentAvailableHoursWeek,
@@ -194,6 +198,11 @@ export default function UltimatelyResultPage() {
     );
   }
 
+  const requiredRevenueDisplay = displayRequiredRevenue(result);
+  // "Still depends on unresolved delegation costs" (the Role dd's fallback
+  // below) is specifically about delegation, not the OPEX-partial floor
+  // reason — kept narrow so it doesn't collide with Business's own OPEX
+  // signal just above it.
   const hasUnknownDelegationCost = result.confidenceFlags.some((f) => f.field === "delegationItems" && f.confidence === "INCOMPLETE");
 
   // Diagnoses a contradiction between the owner's stated intended ownership
@@ -358,13 +367,7 @@ export default function UltimatelyResultPage() {
         <h2 className="text-sm font-semibold">The business required to support it</h2>
         <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <dt className="text-ink/60">Required revenue</dt>
-          <dd>
-            {result.requiredRevenue
-              ? hasUnknownDelegationCost
-                ? `At least $${result.requiredRevenue} — one or more replacement labor costs aren't known yet`
-                : `$${result.requiredRevenue}`
-              : "Incomplete"}
-          </dd>
+          <dd>{requiredRevenueDisplay.status === "KNOWN" ? requiredRevenueDisplay.text : "Incomplete"}</dd>
           <dt className="text-ink/60">Weighted contribution margin</dt>
           <dd>{asPercentDisplay(result.weightedContributionMargin)}</dd>
           <dt className="text-ink/60">Mature operating costs (known)</dt>

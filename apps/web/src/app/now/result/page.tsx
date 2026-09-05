@@ -6,6 +6,7 @@ import type { ConfidenceLevel } from "@revenue-reality/domain";
 import { ValidationError } from "@revenue-reality/validation";
 import {
   buildNowScenarioInput,
+  displayRequiredRevenue,
   formatMoney,
   runScenario,
   sumKnownOperatingCost,
@@ -71,6 +72,7 @@ export default function NowResultPage() {
         activeStreams,
         streamInputs,
         operatingCosts,
+        opexListIsPartial,
         ownerInputs,
         currentBusinessHoursWeek,
         currentAvailableHoursWeek,
@@ -89,6 +91,7 @@ export default function NowResultPage() {
       activeStreams,
       streamInputs,
       operatingCosts,
+      opexListIsPartial,
       ownerInputs,
       currentBusinessHoursWeek,
       currentAvailableHoursWeek,
@@ -323,7 +326,7 @@ export default function NowResultPage() {
         <h2 className="text-sm font-semibold">What the business would need to produce for this life to work</h2>
         {result.requiredRevenue !== null && result.requiredVolumeByStream !== null ? (
           <p className="mt-2 text-sm">
-            Required revenue: <strong>${result.requiredRevenue}</strong> —{" "}
+            Required revenue: <strong>{displayRequiredRevenue(result).text}</strong> —{" "}
             {result.requiredVolumeByStream.map((v) => `${v.volume} ${streamLabelById.get(v.streamId) ?? v.streamId}`).join(", ")}
           </p>
         ) : (

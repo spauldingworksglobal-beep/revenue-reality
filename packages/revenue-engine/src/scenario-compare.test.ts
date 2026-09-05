@@ -1,17 +1,54 @@
 import { describe, expect, it } from "vitest";
-import type { ScenarioEngineInput, ScenarioType } from "@revenue-reality/domain";
+import type { ConfidenceFlag, ScenarioEngineInput, ScenarioResult, ScenarioType } from "@revenue-reality/domain";
 import { runScenario } from "./scenario";
 import {
   buildProgressionPairs,
   canCompareRevenueAlignment,
+  classifyRequiredRevenue,
   collectMaterialAssumptions,
+  compareRequiredRevenueBounds,
   detectMaterialChanges,
   displayRequiredRevenue,
   ownerBenefitLabel,
   requiredRevenueIsFloor,
   type CompareLabels,
+  type RequiredRevenueBound,
+  type RequiredRevenueFloorReason,
   type ScenarioCompareSnapshot,
 } from "./scenario-compare";
+
+/** Minimal, valid ScenarioResult for testing the Required Revenue bound logic in isolation — every other field is a neutral placeholder never asserted on. */
+function minimalResult(requiredRevenue: string | null, confidenceFlags: ConfidenceFlag[] = []): ScenarioResult {
+  return {
+    scenarioRevisionId: "r",
+    formulaVersion: "test",
+    computedAt: "2026-01-01T00:00:00.000Z",
+    actualRevenue: null,
+    requiredEconomicContribution: null,
+    weightedContributionMargin: "0.6",
+    requiredRevenue,
+    requiredVolumeByStream: null,
+    breakEvenFloor: null,
+    perStreamEconomics: [],
+    operatingEconomicSurplus: null,
+    requiredRetainedBusinessCapital: { recurring: "0.00", oneTime: "0.00", total: "0.00" },
+    distributableEconomicSurplus: null,
+    ownerEconomicsResults: null,
+    primaryOwnerBenefitVsRequirement: null,
+    ownerSupportSignal: "INSUFFICIENT_DATA",
+    capacitySignal: "INSUFFICIENT_DATA",
+    timeSignal: "INSUFFICIENT_DATA",
+    confidenceFlags,
+  };
+}
+
+const exact = (value: string): RequiredRevenueBound => ({ status: "EXACT", value });
+const floor = (value: string, ...reasons: RequiredRevenueFloorReason[]): RequiredRevenueBound => ({
+  status: "LOWER_BOUND",
+  value,
+  reasons: reasons.length > 0 ? reasons : ["DELEGATION_COST_UNKNOWN"],
+});
+const unknownBound: RequiredRevenueBound = { status: "UNKNOWN" };
 
 const labels: CompareLabels = {
   streamLabelById: { consulting: "Consulting" },
@@ -198,6 +235,119 @@ describe("scenario-compare — Revenue Alignment stays separate from Owner Suppo
     expect(alignmentComparable).toBe(false);
     // Owner support is a completely separate, already-available signal regardless of period comparability.
     expect(result.ownerSupportSignal).not.toBe("INSUFFICIENT_DATA");
+  });
+});
+
+describe("scenario-compare — classifyRequiredRevenue: EXACT vs LOWER_BOUND vs UNKNOWN", () => {
+  it("classifies a clean solve as EXACT", () => {
+    expect(classifyRequiredRevenue(minimalResult("20000.00"))).toEqual({ status: "EXACT", value: "20000.00" });
+  });
+
+  it("classifies null (funding responsibility unconfirmed) as UNKNOWN — never a floor, never zero", () => {
+    expect(classifyRequiredRevenue(minimalResult(null))).toEqual({ status: "UNKNOWN" });
+  });
+
+  it("classifies an unknown delegation/replacement cost as a LOWER_BOUND with reason DELEGATION_COST_UNKNOWN", () => {
+    const result = minimalResult("20000.00", [{ field: "delegationItems", confidence: "INCOMPLETE" }]);
+    expect(classifyRequiredRevenue(result)).toEqual({ status: "LOWER_BOUND", value: "20000.00", reasons: ["DELEGATION_COST_UNKNOWN"] });
+  });
+
+  it("classifies a partial OPEX list as a LOWER_BOUND with reason OPEX_PARTIAL — never turns Required Revenue into null", () => {
+    const result = minimalResult("20000.00", [{ field: "operatingCosts", confidence: "INCOMPLETE" }]);
+    expect(classifyRequiredRevenue(result)).toEqual({ status: "LOWER_BOUND", value: "20000.00", reasons: ["OPEX_PARTIAL"] });
+  });
+
+  it("carries both reasons when delegation cost is unknown AND OPEX is partial", () => {
+    const result = minimalResult("20000.00", [
+      { field: "delegationItems", confidence: "INCOMPLETE" },
+      { field: "operatingCosts", confidence: "INCOMPLETE" },
+    ]);
+    const bound = classifyRequiredRevenue(result);
+    expect(bound.status).toBe("LOWER_BOUND");
+    expect(bound.status === "LOWER_BOUND" && bound.reasons.sort()).toEqual(["DELEGATION_COST_UNKNOWN", "OPEX_PARTIAL"]);
+  });
+
+  it("a rough equal-weight sales-mix assumption is a confidence qualifier, not a mathematical bound — never classified as a floor", () => {
+    const result = minimalResult("20000.00", [{ field: "salesMix", confidence: "ROUGH_ESTIMATE" }]);
+    expect(classifyRequiredRevenue(result)).toEqual({ status: "EXACT", value: "20000.00" });
+  });
+
+  it("a rough or strong estimate elsewhere (e.g. a stream's COGS) is likewise never treated as a bound on its own", () => {
+    const result = minimalResult("20000.00", [{ field: "stream.x.cogs", confidence: "ROUGH_ESTIMATE" }]);
+    expect(classifyRequiredRevenue(result)).toEqual({ status: "EXACT", value: "20000.00" });
+  });
+});
+
+describe("scenario-compare — compareRequiredRevenueBounds: the lower-bound comparison primitive", () => {
+  it("EXACT vs EXACT: an exact delta in either direction", () => {
+    expect(compareRequiredRevenueBounds(exact("20000.00"), exact("26000.00"))).toEqual({ kind: "EXACT_DELTA", deltaValue: "6000.00", direction: "INCREASE" });
+    expect(compareRequiredRevenueBounds(exact("26000.00"), exact("20000.00"))).toEqual({ kind: "EXACT_DELTA", deltaValue: "6000.00", direction: "DECREASE" });
+    expect(compareRequiredRevenueBounds(exact("20000.00"), exact("20000.00"))).toEqual({ kind: "EXACT_DELTA", deltaValue: "0.00", direction: "NONE" });
+  });
+
+  it("EXACT(20K) -> LOWER_BOUND(26K): the floor already exceeds the exact value, so a guaranteed minimum increase of $6K is provable", () => {
+    expect(compareRequiredRevenueBounds(exact("20000.00"), floor("26000.00"))).toEqual({ kind: "GUARANTEED_MINIMUM_DELTA", deltaValue: "6000.00", direction: "INCREASE" });
+  });
+
+  it("LOWER_BOUND(20K) -> EXACT(26K): the floor does NOT exceed the exact value, so direction/magnitude is indeterminate — NEXT's true requirement may ultimately be above $26,000", () => {
+    expect(compareRequiredRevenueBounds(floor("20000.00"), exact("26000.00"))).toEqual({ kind: "INDETERMINATE" });
+  });
+
+  it("LOWER_BOUND(30K) -> EXACT(20K): the floor already exceeds the exact value, so a guaranteed minimum decrease of $10K is provable", () => {
+    expect(compareRequiredRevenueBounds(floor("30000.00"), exact("20000.00"))).toEqual({ kind: "GUARANTEED_MINIMUM_DELTA", deltaValue: "10000.00", direction: "DECREASE" });
+  });
+
+  it("LOWER_BOUND(20K) -> LOWER_BOUND(26K): never infers an increase from two floors alone, even though 26K > 20K", () => {
+    expect(compareRequiredRevenueBounds(floor("20000.00"), floor("26000.00"))).toEqual({ kind: "INDETERMINATE" });
+  });
+
+  it("equal floors are also indeterminate — a shared floor value proves nothing about the true values", () => {
+    expect(compareRequiredRevenueBounds(floor("20000.00"), floor("20000.00"))).toEqual({ kind: "INDETERMINATE" });
+  });
+
+  it("either side UNKNOWN is unavailable — never a numeric claim", () => {
+    expect(compareRequiredRevenueBounds(unknownBound, exact("20000.00"))).toEqual({ kind: "UNAVAILABLE" });
+    expect(compareRequiredRevenueBounds(exact("20000.00"), unknownBound)).toEqual({ kind: "UNAVAILABLE" });
+    expect(compareRequiredRevenueBounds(unknownBound, unknownBound)).toEqual({ kind: "UNAVAILABLE" });
+  });
+});
+
+describe("scenario-compare — floor qualifier survives every consumption point", () => {
+  const floorResult = minimalResult("26000.00", [{ field: "delegationItems", confidence: "INCOMPLETE" }]);
+  const exactFromSnapshot = (rr: string): ScenarioCompareSnapshot => ({
+    scenarioType: "NEXT",
+    input: baseInput("NEXT"),
+    result: minimalResult(rr),
+    unknownOwnershipOwnerIds: [],
+    mixWeightFallbackApplied: false,
+    excludedStreamIds: [],
+    opexListIsPartial: false,
+  });
+  const floorToSnapshot: ScenarioCompareSnapshot = {
+    scenarioType: "ULTIMATELY",
+    input: baseInput("ULTIMATELY"),
+    result: floorResult,
+    unknownOwnershipOwnerIds: [],
+    mixWeightFallbackApplied: false,
+    excludedStreamIds: [],
+    opexListIsPartial: false,
+  };
+
+  it("survives the scenario-summary display (displayRequiredRevenue)", () => {
+    const display = displayRequiredRevenue(floorResult);
+    expect(display.status).toBe("KNOWN");
+    expect(display.text).toContain("At least $26000.00");
+  });
+
+  it("survives the full-table display identically to the summary — both call the same function, so they can never drift", () => {
+    expect(displayRequiredRevenue(floorResult)).toEqual(displayRequiredRevenue(floorResult));
+  });
+
+  it("survives material-change copy: an EXACT->LOWER_BOUND delta reads 'at least,' never an exact figure", () => {
+    const change = detectMaterialChanges(exactFromSnapshot("20000.00"), floorToSnapshot, labels);
+    const rr = change.find((c) => c.id === "required-revenue")!;
+    expect(rr.text).toContain("at least");
+    expect(rr.text).toContain("$6000.00");
   });
 });
 

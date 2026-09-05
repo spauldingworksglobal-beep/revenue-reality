@@ -26,6 +26,7 @@ function baseParams(overrides: Partial<BuildUltimatelyScenarioInputParams> = {})
       { id: "software", scenarioId: "ultimately", category: "software", amount: "600.00", cadence: "MONTHLY", knownOrEstimated: "KNOWN", confidence: "EXACT", isPartialList: false },
       { id: "admin", scenarioId: "ultimately", category: "administrative labor", amount: "1500.00", cadence: "MONTHLY", knownOrEstimated: "KNOWN", confidence: "STRONG_ESTIMATE", isPartialList: false },
     ],
+    opexListIsPartial: false,
     ownerInputs: [
       { ownerId: "owner-1", hoursWeek: { value: 999, confidence: "EXACT" }, personalCashInvestment: "0.00", personallyPaidCosts: "0.00", functionConfidence: "KNOWN", broadFunctions: [], targetLaborCompensation: { value: "1000.00", confidence: "STRONG_ESTIMATE" }, targetProfitDistribution: null },
       { ownerId: "owner-2", hoursWeek: { value: 5, confidence: "EXACT" }, personalCashInvestment: "0.00", personallyPaidCosts: "0.00", functionConfidence: "KNOWN", broadFunctions: [], targetLaborCompensation: null, targetProfitDistribution: null },

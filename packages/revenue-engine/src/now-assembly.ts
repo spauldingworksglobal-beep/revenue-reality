@@ -44,6 +44,8 @@ export interface BuildNowScenarioInputParams {
   activeStreams: RevenueStream[];
   streamInputs: NowStreamAssemblyInput[];
   operatingCosts: OperatingCost[];
+  /** The owner's own explicit "this isn't everything" flag — never derived from the list itself. Propagated into the result's confidenceFlags by withNowResultCaveats so Required Revenue is never shown as exact when the known-cost list is admittedly incomplete. */
+  opexListIsPartial: boolean;
   ownerInputs: NowOwnerAssemblyInput[];
   /** Time Reality's current business hours — authoritative for the primary respondent; see buildNowScenarioInput. */
   currentBusinessHoursWeek: ConfidenceValue<number>;
@@ -79,6 +81,8 @@ export type NowScenarioAssemblyResult =
       mixWeightFallbackApplied: boolean;
       /** Active streams excluded from the calculation because price and/or Cost of Delivery haven't been entered yet. */
       excludedStreamIds: ID[];
+      /** Echoes params.opexListIsPartial — see withNowResultCaveats. */
+      opexListIsPartial: boolean;
     }
   | { status: "INCOMPLETE"; missing: NowScenarioMissingReason[] };
 
@@ -199,26 +203,35 @@ export function buildNowScenarioInput(params: BuildNowScenarioInputParams): NowS
     unknownOwnershipOwnerIds,
     mixWeightFallbackApplied: streamAssembly.mixWeightFallbackApplied,
     excludedStreamIds: streamAssembly.excludedStreamIds,
+    opexListIsPartial: params.opexListIsPartial,
   };
 }
 
 /**
  * Post-processes a ScenarioResult with the caveats buildNowScenarioInput's
- * READY variant already knows about — currently just the sales-mix
- * modeling assumption, surfaced as an explicit confidence flag so it can
- * never be mistaken for a known fact. Does not touch runScenario itself:
- * this is orchestration, not a new calculation.
+ * READY variant already knows about: the sales-mix modeling assumption, and
+ * an explicitly partial operating-cost list — both surfaced as confidence
+ * flags so neither can be mistaken for a complete/exact fact. A partial
+ * OPEX list means Required Revenue is a floor, not an unqualified number
+ * (Build Spec Milestone 8 follow-up §2) — see classifyRequiredRevenue in
+ * scenario-compare.ts, which reads the "operatingCosts" flag pushed here.
+ * Does not touch runScenario itself: this is orchestration, not a new
+ * calculation.
  */
 export function withNowResultCaveats(
   result: ScenarioResult,
   assembly: Extract<NowScenarioAssemblyResult, { status: "READY" }>,
 ): ScenarioResult {
-  if (!assembly.mixWeightFallbackApplied) return result;
+  const extraFlags: ScenarioResult["confidenceFlags"] = [];
+  if (assembly.mixWeightFallbackApplied) {
+    extraFlags.push({ field: "salesMix", confidence: "ROUGH_ESTIMATE" });
+  }
+  if (assembly.opexListIsPartial && !result.confidenceFlags.some((f) => f.field === "operatingCosts")) {
+    extraFlags.push({ field: "operatingCosts", confidence: "INCOMPLETE" });
+  }
+  if (extraFlags.length === 0) return result;
   return {
     ...result,
-    confidenceFlags: assembleConfidenceFlags([
-      ...result.confidenceFlags,
-      { field: "salesMix", confidence: "ROUGH_ESTIMATE" },
-    ]),
+    confidenceFlags: assembleConfidenceFlags([...result.confidenceFlags, ...extraFlags]),
   };
 }

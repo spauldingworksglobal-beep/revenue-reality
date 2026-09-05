@@ -45,6 +45,7 @@ function hcfParams(overrides: Partial<BuildNowScenarioInputParams> = {}): BuildN
       { id: "storage", scenarioId: "now", category: "storage", amount: "450.00", cadence: "MONTHLY", knownOrEstimated: "KNOWN", confidence: "EXACT", isPartialList: true },
       { id: "phones", scenarioId: "now", category: "phones", amount: "483.00", cadence: "MONTHLY", knownOrEstimated: "KNOWN", confidence: "EXACT", isPartialList: true },
     ],
+    opexListIsPartial: true,
     ownerInputs: [
       { ownerId: "owner-1", hoursWeek: { value: 5, confidence: "ROUGH_ESTIMATE" }, personalCashInvestment: "0.00", personallyPaidCosts: "0.00", functionConfidence: "NOT_SURE", broadFunctions: [], cashReceived: { mode: "UNCLASSIFIED_TOTAL", unclassifiedTotal: { value: "0.00", confidence: "EXACT" } } },
       { ownerId: "owner-2", hoursWeek: { value: 5, confidence: "ROUGH_ESTIMATE" }, personalCashInvestment: "0.00", personallyPaidCosts: "0.00", functionConfidence: "NOT_SURE", broadFunctions: [], cashReceived: { mode: "UNCLASSIFIED_TOTAL", unclassifiedTotal: { value: "400.00", confidence: "EXACT" } } },
@@ -152,6 +153,7 @@ function completeParams(overrides: Partial<BuildNowScenarioInputParams> = {}): B
       { id: "software", scenarioId: "now", category: "software", amount: "500.00", cadence: "MONTHLY", knownOrEstimated: "KNOWN", confidence: "EXACT", isPartialList: false },
       { id: "rent", scenarioId: "now", category: "rent", amount: "300.00", cadence: "MONTHLY", knownOrEstimated: "KNOWN", confidence: "EXACT", isPartialList: false },
     ],
+    opexListIsPartial: false,
     ownerInputs: [
       { ownerId: "owner-1", hoursWeek: { value: 20, confidence: "EXACT" }, personalCashInvestment: "0.00", personallyPaidCosts: "0.00", functionConfidence: "KNOWN", broadFunctions: [], cashReceived: null },
       { ownerId: "owner-2", hoursWeek: { value: 10, confidence: "EXACT" }, personalCashInvestment: "0.00", personallyPaidCosts: "0.00", functionConfidence: "KNOWN", broadFunctions: [], cashReceived: null },
@@ -269,6 +271,30 @@ describe("buildNowScenarioInput — incomplete data never crashes, never fabrica
     if (built.status !== "READY") throw new Error("expected READY");
     const result = runScenario(built.input, { revisionId: "r" });
     expect(withNowResultCaveats(result, built)).toEqual(result);
+  });
+
+  it("a scenario-level opexListIsPartial=true propagates into confidenceFlags as an operatingCosts INCOMPLETE flag, making Required Revenue a floor (Build Spec Milestone 8 follow-up §2)", () => {
+    const built = buildNowScenarioInput(completeParams({ opexListIsPartial: true }));
+    if (built.status !== "READY") throw new Error("expected READY");
+    const result = runScenario(built.input, { revisionId: "r" });
+    const withCaveats = withNowResultCaveats(result, built);
+    expect(withCaveats.confidenceFlags).toContainEqual({ field: "operatingCosts", confidence: "INCOMPLETE" });
+    // Required Revenue itself is never nulled out for this reason — the
+    // known costs still provide a useful floor.
+    expect(withCaveats.requiredRevenue).not.toBeNull();
+  });
+
+  it("never double-flags operatingCosts when both opexListIsPartial and a per-item isPartialList are true", () => {
+    const built = buildNowScenarioInput(
+      completeParams({
+        opexListIsPartial: true,
+        operatingCosts: [{ id: "software", scenarioId: "now", category: "software", amount: "500.00", cadence: "MONTHLY", knownOrEstimated: "KNOWN", confidence: "EXACT", isPartialList: true }],
+      }),
+    );
+    if (built.status !== "READY") throw new Error("expected READY");
+    const result = runScenario(built.input, { revisionId: "r" });
+    const withCaveats = withNowResultCaveats(result, built);
+    expect(withCaveats.confidenceFlags.filter((f) => f.field === "operatingCosts")).toHaveLength(1);
   });
 
   it("excludes an active stream with no price/COGS entered yet, but still runs on the streams that are usable", () => {

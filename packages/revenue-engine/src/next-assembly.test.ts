@@ -27,6 +27,7 @@ function baseParams(overrides: Partial<BuildNextScenarioInputParams> = {}): Buil
       { id: "rent", scenarioId: "next", category: "rent", amount: "300.00", cadence: "MONTHLY", knownOrEstimated: "KNOWN", confidence: "EXACT", isPartialList: false },
       { id: "marketing", scenarioId: "next", category: "marketing", amount: "200.00", cadence: "MONTHLY", knownOrEstimated: "KNOWN", confidence: "STRONG_ESTIMATE", isPartialList: false },
     ],
+    opexListIsPartial: false,
     ownerInputs: [
       { ownerId: "owner-1", hoursWeek: { value: 999, confidence: "EXACT" }, personalCashInvestment: "0.00", personallyPaidCosts: "0.00", functionConfidence: "KNOWN", broadFunctions: [], targetLaborCompensation: { value: "2000.00", confidence: "STRONG_ESTIMATE" }, targetProfitDistribution: null },
       { ownerId: "owner-2", hoursWeek: { value: 10, confidence: "EXACT" }, personalCashInvestment: "0.00", personallyPaidCosts: "0.00", functionConfidence: "KNOWN", broadFunctions: [], targetLaborCompensation: null, targetProfitDistribution: null },

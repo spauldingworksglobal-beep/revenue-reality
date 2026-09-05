@@ -9,6 +9,7 @@ import {
   buildIntendedSecurityItems,
   buildNowScenarioInput,
   buildNextScenarioInput,
+  displayRequiredRevenue,
   resolveNextLifeCategories,
   resolveNextSecurityItems,
   runScenario,
@@ -97,6 +98,7 @@ export default function NextResultPage() {
         activeStreams,
         streamInputs: next.streamInputs,
         operatingCosts: next.operatingCosts,
+        opexListIsPartial: next.opexListIsPartial,
         ownerInputs: next.ownerInputs,
         nextBusinessHoursWeek: next.nextBusinessHoursWeek,
         nextAvailableHoursWeek: next.nextAvailableHoursWeek,
@@ -123,6 +125,7 @@ export default function NextResultPage() {
         activeStreams,
         streamInputs: now.streamInputs,
         operatingCosts: now.operatingCosts,
+        opexListIsPartial: now.opexListIsPartial,
         ownerInputs: now.ownerInputs,
         currentBusinessHoursWeek,
         currentAvailableHoursWeek,
@@ -180,7 +183,7 @@ export default function NextResultPage() {
     );
   }
 
-  const hasUnknownDelegationCost = result.confidenceFlags.some((f) => f.field === "delegationItems" && f.confidence === "INCOMPLETE");
+  const requiredRevenueDisplay = displayRequiredRevenue(result);
 
   let nowResult: ReturnType<typeof runScenario> | null = null;
   if (nowAssembly.status === "READY") {
@@ -310,13 +313,7 @@ export default function NextResultPage() {
         <h2 className="text-sm font-semibold">What the business must become</h2>
         <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <dt className="text-ink/60">Required revenue</dt>
-          <dd>
-            {result.requiredRevenue
-              ? hasUnknownDelegationCost
-                ? `At least $${result.requiredRevenue} — one or more replacement labor costs aren't known yet`
-                : `$${result.requiredRevenue}`
-              : "Incomplete"}
-          </dd>
+          <dd>{requiredRevenueDisplay.status === "KNOWN" ? requiredRevenueDisplay.text : "Incomplete"}</dd>
           <dt className="text-ink/60">Weighted contribution margin</dt>
           <dd>{asPercentDisplay(result.weightedContributionMargin)}</dd>
           <dt className="text-ink/60">Known recurring operating costs</dt>
