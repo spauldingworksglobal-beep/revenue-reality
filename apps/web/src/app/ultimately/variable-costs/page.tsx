@@ -10,7 +10,7 @@ import { newId } from "@/lib/ids";
 
 const PRESETS = ["Payment processing fee", "Sales commission", "Platform / transaction fee", "Shipping"];
 
-function StreamVariableCosts({ streamId, streamLabel }: { streamId: string; streamLabel: string }) {
+function StreamVariableCosts({ streamId, streamLabel, sourceLabel }: { streamId: string; streamLabel: string; sourceLabel: string }) {
   const { getStreamInput, updateStreamInput } = useUltimately();
   const input = getStreamInput(streamId);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,7 @@ function StreamVariableCosts({ streamId, streamLabel }: { streamId: string; stre
   return (
     <fieldset className="rounded-lg border border-ink/15 bg-white p-4">
       <legend className="px-1 text-sm font-medium">{streamLabel}</legend>
-      <p className="mb-2 text-xs text-ink/60">Pre-filled from NEXT — adjust anything that changes at the mature model&rsquo;s volume or channel mix.</p>
+      <p className="mb-2 text-xs text-ink/60">Pre-filled from your {sourceLabel} model — adjust anything that changes at the mature model&rsquo;s volume or channel mix.</p>
 
       <div className="flex flex-wrap gap-2">
         {PRESETS.map((p) => (
@@ -111,18 +111,20 @@ function StreamVariableCosts({ streamId, streamLabel }: { streamId: string; stre
 
 export default function UltimatelyVariableCostsPage() {
   const { revenueStreams } = useLifeReality();
+  const { initializedFrom } = useUltimately();
   const activeStreams = revenueStreams.filter((s) => s.active);
+  const sourceLabel = initializedFrom ?? "NEXT";
 
   return (
     <WizardShell
       eyebrow="ULTIMATELY · Other Variable Costs"
       title="Do these costs change in the mature model?"
-      intro={<p>Optional — leave empty if nothing changes from NEXT.</p>}
+      intro={<p>Optional — leave empty if nothing changes from {sourceLabel}.</p>}
       backHref="/ultimately/cogs"
       nextHref="/ultimately/opex"
     >
       {activeStreams.map((s) => (
-        <StreamVariableCosts key={s.id} streamId={s.id} streamLabel={s.name || "Unnamed stream"} />
+        <StreamVariableCosts key={s.id} streamId={s.id} streamLabel={s.name || "Unnamed stream"} sourceLabel={sourceLabel} />
       ))}
     </WizardShell>
   );

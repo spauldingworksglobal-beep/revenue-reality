@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ConfidenceLevel } from "@revenue-reality/domain";
 import { ValidationError } from "@revenue-reality/validation";
 import {
+  assessOwnershipRoleFit,
   buildNextScenarioInput,
   buildNowScenarioInput,
   buildUltimatelyScenarioInput,
@@ -19,6 +20,7 @@ import {
   type UltimatelyScenarioMissingReason,
 } from "@revenue-reality/revenue-engine";
 import { WizardShell, EphemeralNotice } from "@/components/WizardShell";
+import { OWNERSHIP_INTENT_OPTIONS } from "@/lib/presets";
 import { useLifeReality } from "@/lib/life-store";
 import { useNow } from "@/lib/now-store";
 import { useNext } from "@/lib/next-store";
@@ -26,6 +28,13 @@ import { useUltimately } from "@/lib/ultimately-store";
 
 const MISSING_LABELS: Record<UltimatelyScenarioMissingReason, { label: string; href: string }> = {
   NO_USABLE_REVENUE_STREAM: { label: "At least one revenue stream with a price and a Cost of Delivery entered for the mature model", href: "/ultimately/streams" },
+};
+
+const ROLE_FIT_MESSAGES: Record<string, (ownershipLabel: string) => string> = {
+  OWNER_HOURS_MAY_CONTRADICT_INTENDED_MODEL: (ownershipLabel) =>
+    `You said this business should ultimately be "${ownershipLabel}," but this model still shows confirmed owner hours. Revenue Reality never reduces hours automatically — confirm this is intentional, or adjust Intended Time Reality or the ownership model.`,
+  OWNER_STILL_PERFORMS_WORK_THEY_SAID_TO_DELEGATE: () =>
+    `You said some of this work should no longer depend on you, but this model still lists it as work you continue to perform. Revenue Reality never invents a delegation resource to resolve this — reconcile it on the Time Reality or Owners/Delegation screens.`,
 };
 
 const CONFIDENCE_LABELS: Record<ConfidenceLevel, string> = {
@@ -40,7 +49,7 @@ function asPercentDisplay(ratio: string): string {
 }
 
 export default function UltimatelyResultPage() {
-  const { owners, revenueStreams, restructureDate, businessName, currentBusinessHoursWeek, currentAvailableHoursWeek, currentCategories, currentSecurity } = useLifeReality();
+  const { owners, revenueStreams, restructureDate, businessName, currentBusinessHoursWeek, currentAvailableHoursWeek, currentCategories, currentSecurity, workToEventuallyDelegate } = useLifeReality();
   const now = useNow();
   const next = useNext();
   const ultimately = useUltimately();
@@ -185,6 +194,18 @@ export default function UltimatelyResultPage() {
 
   const hasUnknownDelegationCost = result.confidenceFlags.some((f) => f.field === "delegationItems" && f.confidence === "INCOMPLETE");
 
+  // Diagnoses a contradiction between the owner's stated intended ownership
+  // model and the mature model as actually built — never resolves it (no
+  // auto-reducing hours, no invented delegation resource). Only
+  // RUNS_WITHOUT_ME/ASSET carry an owner-independence expectation to check.
+  const roleFit = assessOwnershipRoleFit({
+    intendedOwnershipModel: ultimately.snapshotIntendedOwnershipModel,
+    ownerBusinessHoursWeek: ultimately.snapshotUltimateBusinessHoursWeek,
+    workOwnerContinuesToPerform: ultimately.ultimatelyWorkToContinue,
+    workOwnerSaidShouldNotDependOnThem: workToEventuallyDelegate,
+  });
+  const ownershipModelLabel = OWNERSHIP_INTENT_OPTIONS.find((o) => o.value === ultimately.snapshotIntendedOwnershipModel)?.label ?? "";
+
   let baselineResult: ReturnType<typeof runScenario> | null = null;
   let baselineLabel: "NEXT" | "NOW" | null = null;
   if (nextAssembly && nextAssembly.status === "READY") {
@@ -273,6 +294,15 @@ export default function UltimatelyResultPage() {
         </div>
       )}
 
+      {roleFit.applies && roleFit.flags.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+          <p className="font-medium">This mature model may not match your intended ownership role yet:</p>
+          {roleFit.flags.map((flag) => (
+            <p key={flag}>{ROLE_FIT_MESSAGES[flag]?.(ownershipModelLabel)}</p>
+          ))}
+        </div>
+      )}
+
       {result.requiredRevenue === null && (
         <div className="flex flex-col gap-2 rounded-md border border-accent/40 bg-accent/5 p-4 text-sm">
           <p className="font-medium">Required Revenue isn&rsquo;t available yet — everything below it still is.</p>
@@ -340,19 +370,22 @@ export default function UltimatelyResultPage() {
         )}
       </section>
 
-      {/* What the owner receives */}
+      {/* What this model must provide the owner — modeled, not actual/historical */}
       <section className="rounded-lg border border-ink/15 bg-white p-4">
-        <h2 className="text-sm font-semibold">What the owner receives</h2>
+        <h2 className="text-sm font-semibold">What this model must provide the owner</h2>
+        <p className="mt-1 text-xs text-ink/50">
+          Modeled, not actual — this is what the mature business would need to produce, not a record of payments that have happened.
+        </p>
         {result.ownerEconomicsResults ? (
           <ul className="mt-2 flex flex-col gap-1 text-sm text-ink/70">
             {result.ownerEconomicsResults.map((r) => (
               <li key={r.ownerId}>
-                {ownerLabelById.get(r.ownerId) ?? "Owner"}: ${r.totalOwnerEconomicBenefit} total economic benefit (labor ${r.laborCompensation} + ownership return ${r.profitDistribution})
+                {ownerLabelById.get(r.ownerId) ?? "Owner"}: ${r.totalOwnerEconomicBenefit} total modeled owner economic benefit (target labor compensation ${r.laborCompensation} + required ownership return ${r.profitDistribution})
               </li>
             ))}
           </ul>
         ) : (
-          <p className="mt-2 text-sm text-ink/50">Owner economic benefit needs Required Revenue first — see above.</p>
+          <p className="mt-2 text-sm text-ink/50">Modeled owner economic benefit needs Required Revenue first — see above.</p>
         )}
       </section>
 
@@ -389,17 +422,23 @@ export default function UltimatelyResultPage() {
           <dt className="text-ink/60">Life</dt>
           <dd>
             {result.ownerSupportSignal === "BUSINESS_SUPPORTS_OWNER"
-              ? "The business economically provides what you said it should"
+              ? "This model would economically provide what you said it should"
               : result.ownerSupportSignal === "OWNER_SUPPORTS_BUSINESS"
-                ? "The owner would still be supporting the business"
+                ? "The owner would still be supporting the business in this model"
                 : result.ownerSupportSignal === "BOTH"
-                  ? "Both — mutual support"
+                  ? "Both — mutual support, modeled"
                   : "Not enough data yet"}
           </dd>
           <dt className="text-ink/60">Time</dt>
           <dd>{result.timeSignal === "FITS" ? "Operates within your intended business hours" : result.timeSignal === "EXCEEDS_AVAILABLE" ? "Exceeds your intended available hours" : "Not enough data yet"}</dd>
           <dt className="text-ink/60">Role</dt>
-          <dd>{hasUnknownDelegationCost ? "Still depends on unresolved delegation costs" : "Owner's role in this model is fully resolved"}</dd>
+          <dd>
+            {roleFit.applies && roleFit.flags.length > 0
+              ? "May not match your intended ownership model — see above"
+              : hasUnknownDelegationCost
+                ? "Still depends on unresolved delegation costs"
+                : "Owner's role in this model is fully resolved"}
+          </dd>
           <dt className="text-ink/60">Business</dt>
           <dd>{ultimately.opexListIsPartial ? "Operating costs are known to be incomplete" : "Known operating costs and retention are complete"}</dd>
           <dt className="text-ink/60">Sales / Capacity</dt>

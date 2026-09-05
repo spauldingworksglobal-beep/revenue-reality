@@ -59,7 +59,7 @@ function OwnerTargetCard({ ownerId, label }: { ownerId: string; label: string })
 
 export default function UltimatelyDistributionPage() {
   const { owners } = useLifeReality();
-  const { distributionPolicy, setDistributionPolicy, distributionPercents, setDistributionPercent } = useUltimately();
+  const { distributionPolicy, setDistributionPolicy, distributionPercents, setDistributionPercent, initializedFrom } = useUltimately();
 
   const ownershipStatus = useMemo(() => resolveOwnershipSplitStatus(owners), [owners]);
   const sameAsOwnershipDisabled = ownershipStatus !== "COMPLETE_VALID";
@@ -70,7 +70,7 @@ export default function UltimatelyDistributionPage() {
       title="How should profit be distributed once this mature model is running?"
       intro={
         <p>
-          Pre-filled from NEXT&rsquo;s rule if one was set — change it if the mature business should
+          Pre-filled from your {initializedFrom ?? "NEXT"} model&rsquo;s rule if one was set — change it if the mature business should
           distribute differently. Ownership percentage and profit-distribution percentage stay
           distinct; never assumed from one another.
         </p>

@@ -13,7 +13,7 @@ const FUNCTION_CONFIDENCE_OPTIONS = [
   { value: "NOT_SURE" as const, label: "Not sure" },
 ];
 
-function OwnerCard({ ownerId, label, isPrimaryRespondent }: { ownerId: string; label: string; isPrimaryRespondent: boolean }) {
+function OwnerCard({ ownerId, label, isPrimaryRespondent, sourceLabel }: { ownerId: string; label: string; isPrimaryRespondent: boolean; sourceLabel: string }) {
   const { snapshotUltimateBusinessHoursWeek, getOwnerInput, updateOwnerInput } = useUltimately();
   const input = getOwnerInput(ownerId);
   const [investmentError, setInvestmentError] = useState<string | null>(null);
@@ -129,7 +129,7 @@ function OwnerCard({ ownerId, label, isPrimaryRespondent }: { ownerId: string; l
         </div>
       </div>
       <p className="mt-2 text-xs text-ink/50">
-        Pre-filled from NEXT&rsquo;s figures — set either to $0 to signal it should stop once mature.
+        Pre-filled from your {sourceLabel} model&rsquo;s figures — set either to $0 to signal it should stop once mature.
       </p>
     </fieldset>
   );
@@ -137,6 +137,7 @@ function OwnerCard({ ownerId, label, isPrimaryRespondent }: { ownerId: string; l
 
 export default function UltimatelyOwnersPage() {
   const { owners } = useLifeReality();
+  const { initializedFrom } = useUltimately();
 
   return (
     <WizardShell
@@ -153,7 +154,7 @@ export default function UltimatelyOwnersPage() {
       nextHref="/ultimately/delegation"
     >
       {owners.map((owner) => (
-        <OwnerCard key={owner.id} ownerId={owner.id} label={owner.label} isPrimaryRespondent={owner.isPrimaryRespondent} />
+        <OwnerCard key={owner.id} ownerId={owner.id} label={owner.label} isPrimaryRespondent={owner.isPrimaryRespondent} sourceLabel={initializedFrom ?? "NEXT"} />
       ))}
     </WizardShell>
   );

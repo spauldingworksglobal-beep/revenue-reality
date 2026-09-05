@@ -9,7 +9,7 @@ import { useState } from "react";
 
 export default function UltimatelyStreamsPage() {
   const { revenueStreams } = useLifeReality();
-  const { getStreamInput, updateStreamInput } = useUltimately();
+  const { getStreamInput, updateStreamInput, initializedFrom } = useUltimately();
   const [volumeErrors, setVolumeErrors] = useState<Record<string, string>>({});
   const [mixErrors, setMixErrors] = useState<Record<string, string>>({});
 
@@ -65,7 +65,7 @@ export default function UltimatelyStreamsPage() {
       title="What does a typical sale look like in the mature business?"
       intro={
         <p>
-          Pre-filled from your NEXT (or NOW) model — decide intentionally which streams remain,
+          Pre-filled from your {initializedFrom ?? "NEXT"} model — decide intentionally which streams remain,
           which disappear, which become more important, and what price/mix the mature model
           actually runs on. Never assume a stream survives just because it exists today.
         </p>

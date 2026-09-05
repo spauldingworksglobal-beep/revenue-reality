@@ -21,7 +21,7 @@ const PRESET_CATEGORIES = [
 ];
 
 export default function UltimatelyOpexPage() {
-  const { operatingCosts, setOperatingCosts, opexListIsPartial, setOpexListIsPartial } = useUltimately();
+  const { operatingCosts, setOperatingCosts, opexListIsPartial, setOpexListIsPartial, initializedFrom } = useUltimately();
   const [category, setCategory] = useState("");
   const [amountRaw, setAmountRaw] = useState("");
   const [cadence, setCadence] = useState<Cadence>("MONTHLY");
@@ -67,9 +67,9 @@ export default function UltimatelyOpexPage() {
       title="What does the business that has to exist, once mature, actually cost to run?"
       intro={
         <p>
-          Pre-filled from NEXT. This is the ongoing cost of the business AFTER the transition is
-          complete — a cost needed only to get there belongs on the next screen, not here, so it
-          never quietly becomes a permanent part of the mature model.
+          Pre-filled from your {initializedFrom ?? "NEXT"} model. This is the ongoing cost of the business
+          AFTER the transition is complete — a cost needed only to get there belongs on the next screen,
+          not here, so it never quietly becomes a permanent part of the mature model.
         </p>
       }
       backHref="/ultimately/variable-costs"

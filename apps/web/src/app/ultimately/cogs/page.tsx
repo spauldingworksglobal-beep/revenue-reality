@@ -15,7 +15,7 @@ const METHODS: { value: CogsMethod; label: string }[] = [
   { value: "ESTIMATE", label: "I'm not sure" },
 ];
 
-function StreamCogsEditor({ streamId, streamLabel }: { streamId: string; streamLabel: string }) {
+function StreamCogsEditor({ streamId, streamLabel, sourceLabel }: { streamId: string; streamLabel: string; sourceLabel: string }) {
   const { getStreamInput, updateStreamInput } = useUltimately();
   const input = getStreamInput(streamId);
   const cogs = input.cogs;
@@ -51,7 +51,7 @@ function StreamCogsEditor({ streamId, streamLabel }: { streamId: string; streamL
     <fieldset className="rounded-lg border border-ink/15 bg-white p-4">
       <legend className="px-1 text-sm font-medium">{streamLabel}</legend>
       <p className="mb-2 text-xs text-ink/60">
-        Will this change once mature? Pre-filled from NEXT — an improved margin has to be an
+        Will this change once mature? Pre-filled from your {sourceLabel} model — an improved margin has to be an
         explicit assumption you enter here, never automatic just because volume grows.
       </p>
 
@@ -206,6 +206,7 @@ function StreamCogsEditor({ streamId, streamLabel }: { streamId: string; streamL
 
 export default function UltimatelyCogsPage() {
   const { revenueStreams } = useLifeReality();
+  const { initializedFrom } = useUltimately();
   const activeStreams = revenueStreams.filter((s) => s.active);
 
   return (
@@ -216,7 +217,7 @@ export default function UltimatelyCogsPage() {
       nextHref="/ultimately/variable-costs"
     >
       {activeStreams.map((s) => (
-        <StreamCogsEditor key={s.id} streamId={s.id} streamLabel={s.name || "Unnamed stream"} />
+        <StreamCogsEditor key={s.id} streamId={s.id} streamLabel={s.name || "Unnamed stream"} sourceLabel={initializedFrom ?? "NEXT"} />
       ))}
     </WizardShell>
   );

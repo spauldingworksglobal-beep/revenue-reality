@@ -18,7 +18,7 @@ const CATEGORIES: { value: CapitalRequirementCategory; label: string; defaultNat
 ];
 
 export default function UltimatelyRetentionPage() {
-  const { capitalItems, setCapitalItems } = useUltimately();
+  const { capitalItems, setCapitalItems, initializedFrom } = useUltimately();
   const [category, setCategory] = useState<CapitalRequirementCategory | null>(null);
   const [amountRaw, setAmountRaw] = useState("");
   const [nature, setNature] = useState<CapitalNature>("ONE_TIME");
@@ -60,7 +60,7 @@ export default function UltimatelyRetentionPage() {
       title="What will the mature business need to keep or put back into itself?"
       intro={
         <p>
-          Pre-filled from NEXT, plus anything you already added on the transition-cost screen. The
+          Pre-filled from your {initializedFrom ?? "NEXT"} model, plus anything you already added on the transition-cost screen. The
           mature business still pays what operating requires and retains what it needs before
           anything is truly available to the owner — never assume a mature business distributes
           all of its profit.
