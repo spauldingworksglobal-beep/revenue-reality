@@ -282,6 +282,8 @@ export default function UltimatelyResultPage() {
       eyebrow="ULTIMATELY · Result"
       title={`What ${businessName.trim() === "" ? "this business" : businessName} must ultimately become`}
       backHref="/ultimately/capacity"
+      nextHref="/compare"
+      nextLabel="Compare NOW / NEXT / ULTIMATELY"
     >
       <EphemeralNotice />
 

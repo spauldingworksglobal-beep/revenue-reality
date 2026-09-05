@@ -20,3 +20,4 @@ export * from "./ultimately-assembly";
 export * from "./ownership-role-fit";
 export * from "./scenario-stream-assembly";
 export * from "./delegation";
+export * from "./scenario-compare";
