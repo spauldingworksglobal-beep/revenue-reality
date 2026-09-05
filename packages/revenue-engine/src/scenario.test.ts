@@ -400,40 +400,118 @@ describe("runScenario — delegation/owner-labor double-counting guard", () => {
     expect(Number(withExtra.requiredRevenue)).toBeGreaterThan(Number(baseline.requiredRevenue));
   });
 
-  it("case: owner stops performing the work and it is replaced — moving the SAME dollar amount from an owner's targeted labor compensation to a matching DelegationItem replacement cost conserves Required Revenue, it does not double it", () => {
-    // Owner-2 (non-primary) is targeted to be paid $500/mo for a function
-    // they currently perform themselves — "owner continues performing the
-    // work" case: labor compensation applies, no delegation cost.
-    const ownerContinues = completeNextInput();
-    ownerContinues.ownerEconomics = ownerContinues.ownerEconomics.map((o) =>
-      o.ownerId === "owner-2" ? { ...o, targetLaborCompensation: { value: "500.00", confidence: "STRONG_ESTIMATE" as const } } : o,
-    );
+  // The Business-Funded Personal Economic Requirement (F) is a separate,
+  // explicit fact — total personal economic requirement minus whatever the
+  // owner explicitly retains from outside funding (see funding.ts). It is
+  // NEVER re-derived from how the owner happens to be paid. So when the
+  // primary owner stops performing some work themselves and it must be
+  // replaced by paid labor, F does not shrink automatically just because
+  // the owner's own labor-compensation figure shrinks — the business still
+  // owes the owner the same F, now delivered more through profit
+  // distribution and less through wages, on top of a genuine new cost to
+  // pay the replacement. The four tests below build a shared, minimal
+  // two-owner NEXT scenario (zeroing out capital/opex/delegation noise from
+  // the acceptance fixture) so the exact dollar movements can be hand-verified.
+  function baseTwoOwnerNextInput() {
+    const input = completeNextInput();
+    input.operatingCosts = [];
+    input.capitalItems = [];
+    input.delegationItems = [];
+    return input;
+  }
+
+  function withPrimaryLaborComp(input: ReturnType<typeof baseTwoOwnerNextInput>, amount: string) {
+    const next = { ...input, ownerEconomics: input.ownerEconomics.map((o) => (o.ownerId === "owner-1" ? { ...o, targetLaborCompensation: { value: amount, confidence: "STRONG_ESTIMATE" as const } } : o)) };
+    return next;
+  }
+
+  it("case: owner stops performing the work and it is replaced — the replacement cost is a genuine ADDED business requirement; it does not reduce the owner's business-funded personal requirement or leave Required Revenue conserved", () => {
+    // Scenario A — primary owner (owner-1, 60% ownership) does $2,000/mo of
+    // work themselves. Business-funded requirement F = $3,700 (life $3,000 +
+    // security $700, fully business-funded).
+    const ownerContinues = withPrimaryLaborComp(baseTwoOwnerNextInput(), "2000.00");
     const continuesResult = runScenario(ownerContinues, { revisionId: "r1" });
 
-    // Now the owner stops performing that same function and it is replaced
-    // by a $500/mo contractor instead — labor compensation for that function
-    // drops to $0 and an equal-dollar DelegationItem takes its place.
-    const ownerDelegates = completeNextInput();
-    ownerDelegates.ownerEconomics = ownerDelegates.ownerEconomics.map((o) =>
-      o.ownerId === "owner-2" ? { ...o, targetLaborCompensation: undefined } : o,
-    );
+    // Scenario B — $500/mo of that work stops depending on the owner and is
+    // replaced by a contractor. Nothing about F is touched — the owner never
+    // said the business owes them less.
+    const ownerDelegates = withPrimaryLaborComp(baseTwoOwnerNextInput(), "1500.00");
     ownerDelegates.delegationItems = [
-      ...ownerDelegates.delegationItems,
-      { id: "owner2-function", scenarioId: "ridgeline-next", functionLabel: "Owner-2's function", delegationType: "CONTRACTOR", replacementCost: { value: "500.00", confidence: "STRONG_ESTIMATE" }, cadence: "MONTHLY" },
+      { id: "owner1-function", scenarioId: "ridgeline-next", functionLabel: "Owner-1's delegated function", delegationType: "CONTRACTOR", replacementCost: { value: "500.00", confidence: "STRONG_ESTIMATE" }, cadence: "MONTHLY" },
     ];
     const delegatesResult = runScenario(ownerDelegates, { revisionId: "r2" });
 
-    // Same total dollar requirement either way — the $500 is charged exactly
-    // once, whichever bucket it lives in, never once as compensation AND
-    // again as replacement cost.
-    expect(delegatesResult.requiredRevenue).toBe(continuesResult.requiredRevenue);
-    expect(delegatesResult.requiredEconomicContribution).toBe(continuesResult.requiredEconomicContribution);
+    // F itself is untouched by the labor→delegation shift.
+    expect(continuesResult.primaryOwnerBenefitVsRequirement!.businessFundedPersonalEconomicRequirement).toBe("3700.00");
+    expect(delegatesResult.primaryOwnerBenefitVsRequirement!.businessFundedPersonalEconomicRequirement).toBe("3700.00");
 
-    // The owner's own reported benefit correctly reflects that they no
-    // longer receive that $500 once it's delegated away.
-    const owner2Continues = continuesResult.ownerEconomicsResults!.find((o) => o.ownerId === "owner-2")!;
-    const owner2Delegates = delegatesResult.ownerEconomicsResults!.find((o) => o.ownerId === "owner-2")!;
-    expect(Number(owner2Continues.laborCompensation) - Number(owner2Delegates.laborCompensation)).toBe(500);
+    // The business's operating requirement is genuinely higher, not
+    // conserved — replacing owner labor costs real money on top of what the
+    // business already owed the owner.
+    expect(Number(delegatesResult.requiredRevenue)).toBeGreaterThan(Number(continuesResult.requiredRevenue));
+    expect(Number(delegatesResult.requiredRevenue) - Number(continuesResult.requiredRevenue)).toBeCloseTo(1388.89, 1);
+  });
+
+  it("case: owner economic benefit composition shifts from labor compensation toward ownership return (profit distribution) without changing the owner's underlying personal requirement", () => {
+    const continuesResult = runScenario(withPrimaryLaborComp(baseTwoOwnerNextInput(), "2000.00"), { revisionId: "r1" });
+    const ownerDelegates = withPrimaryLaborComp(baseTwoOwnerNextInput(), "1500.00");
+    ownerDelegates.delegationItems = [
+      { id: "owner1-function", scenarioId: "ridgeline-next", functionLabel: "Owner-1's delegated function", delegationType: "CONTRACTOR", replacementCost: { value: "500.00", confidence: "STRONG_ESTIMATE" }, cadence: "MONTHLY" },
+    ];
+    const delegatesResult = runScenario(ownerDelegates, { revisionId: "r2" });
+
+    const owner1Continues = continuesResult.ownerEconomicsResults!.find((o) => o.ownerId === "owner-1")!;
+    const owner1Delegates = delegatesResult.ownerEconomicsResults!.find((o) => o.ownerId === "owner-1")!;
+
+    // Composition shifts by exactly the delegated amount: $500 moves out of
+    // labor compensation and into profit distribution...
+    expect(owner1Continues.laborCompensation).toBe("2000.00");
+    expect(owner1Delegates.laborCompensation).toBe("1500.00");
+    expect(owner1Continues.profitDistribution).toBe("1700.00");
+    expect(owner1Delegates.profitDistribution).toBe("2200.00");
+
+    // ...but the owner's TOTAL economic benefit is pinned to F in both cases
+    // (SAME_AS_OWNERSHIP's self-consistent solve) — proving this is a
+    // composition shift, not a change in what the owner is actually owed.
+    expect(owner1Continues.totalOwnerEconomicBenefit).toBe("3700.00");
+    expect(owner1Delegates.totalOwnerEconomicBenefit).toBe("3700.00");
+  });
+
+  it("case: retained owner work is not also charged as replacement labor — adding delegation for a function the owner still performs would double-charge it, so the guard is that delegation items only ever represent work genuinely moved away from the owner (proven structurally: unrelated delegation never touches an owner's own figures)", () => {
+    const baseline = runScenario(withPrimaryLaborComp(baseTwoOwnerNextInput(), "2000.00"), { revisionId: "r1" });
+    const withUnrelatedDelegation = withPrimaryLaborComp(baseTwoOwnerNextInput(), "2000.00");
+    withUnrelatedDelegation.delegationItems = [
+      { id: "unrelated", scenarioId: "ridgeline-next", functionLabel: "A function neither owner ever performed", delegationType: "CONTRACTOR", replacementCost: { value: "300.00", confidence: "STRONG_ESTIMATE" }, cadence: "MONTHLY" },
+    ];
+    const result = runScenario(withUnrelatedDelegation, { revisionId: "r2" });
+
+    // Owner-1's own labor/distribution figures are completely unaffected —
+    // the $300 delegation cost lives entirely outside owner compensation.
+    const owner1Baseline = baseline.ownerEconomicsResults!.find((o) => o.ownerId === "owner-1")!;
+    const owner1WithDelegation = result.ownerEconomicsResults!.find((o) => o.ownerId === "owner-1")!;
+    expect(owner1WithDelegation.laborCompensation).toBe(owner1Baseline.laborCompensation);
+    expect(owner1WithDelegation.profitDistribution).toBe(owner1Baseline.profitDistribution);
+  });
+
+  it("case: Required Revenue only stays unchanged when a separate, explicit assumption offsets the replacement cost — e.g. the owner also reduces the business-funded requirement by increasing outside funding retained by the same amount", () => {
+    // Same labor→delegation shift as above, but this time the owner ALSO
+    // explicitly says the business is now responsible for $500/mo less of
+    // their personal requirement (outsideFundingRetained rises by $500) —
+    // a deliberate, separate policy change, not an automatic side effect.
+    const offsetting = withPrimaryLaborComp(baseTwoOwnerNextInput(), "1500.00");
+    offsetting.delegationItems = [
+      { id: "owner1-function", scenarioId: "ridgeline-next", functionLabel: "Owner-1's delegated function", delegationType: "CONTRACTOR", replacementCost: { value: "500.00", confidence: "STRONG_ESTIMATE" }, cadence: "MONTHLY" },
+    ];
+    offsetting.lifeAssumption = { ...offsetting.lifeAssumption, outsideFundingRetained: { mode: "AMOUNT", amount: "500.00", confidence: "EXACT" } };
+    const offsettingResult = runScenario(offsetting, { revisionId: "r1" });
+
+    const continuesResult = runScenario(withPrimaryLaborComp(baseTwoOwnerNextInput(), "2000.00"), { revisionId: "r2" });
+
+    // F is now explicitly $500 lower...
+    expect(offsettingResult.primaryOwnerBenefitVsRequirement!.businessFundedPersonalEconomicRequirement).toBe("3200.00");
+    // ...and ONLY because of that explicit change, Required Revenue lands
+    // back where it was before the labor→delegation shift — never automatic.
+    expect(Number(offsettingResult.requiredRevenue)).toBeCloseTo(Number(continuesResult.requiredRevenue), 2);
   });
 
   it("case: owner partially retains and partially delegates — both a real labor compensation AND a real delegation cost apply simultaneously for genuinely distinct functions, summing higher rather than one canceling the other", () => {
