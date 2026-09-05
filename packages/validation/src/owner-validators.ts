@@ -34,6 +34,22 @@ export function validateOwnershipPercentagesIfComplete(owners: Owner[]): void {
   }
 }
 
+export type OwnershipSplitStatus = "COMPLETE_VALID" | "INCOMPLETE_UNKNOWN" | "COMPLETE_INVALID";
+
+/**
+ * A non-throwing status read, for callers that need to gate behavior rather
+ * than reject input outright (e.g. NOW must not offer "same as ownership"
+ * distribution when the split is COMPLETE_INVALID, but should keep working).
+ * A complete split that fails to sum to 100% is INVALID, not merely
+ * "unconfirmed" — it must never be treated the same as genuinely unknown.
+ */
+export function resolveOwnershipSplitStatus(owners: Owner[]): OwnershipSplitStatus {
+  if (owners.length === 0) return "INCOMPLETE_UNKNOWN";
+  if (owners.some((o) => o.ownershipPercent === null)) return "INCOMPLETE_UNKNOWN";
+  const sum = sumDecimalStringsExact(owners.map((o) => o.ownershipPercent!.value));
+  return sum === ONE_HUNDRED_PERCENT ? "COMPLETE_VALID" : "COMPLETE_INVALID";
+}
+
 /** "A short post-restructure operating period must never automatically become an annualized run rate" starts with actually capturing the date. */
 export function validateRestructureDateRequiredForStage(business: { stage: BusinessStage; restructureDate: ISODate | null }): void {
   if ((business.stage === "RESTARTED" || business.stage === "RESTRUCTURED") && business.restructureDate === null) {

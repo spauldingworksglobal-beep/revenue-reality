@@ -1,6 +1,7 @@
-import type { ID, ScenarioRevenueStream } from "@revenue-reality/domain";
+import Decimal from "decimal.js";
+import type { ID, Percent, ScenarioRevenueStream } from "@revenue-reality/domain";
 import { resolveCogsPerUnit, resolveOtherVariableCostPerUnit } from "./cogs";
-import { type Dec, add, divide, multiply, parseMoney, parsePercent, subtract } from "./money";
+import { ONE, type Dec, add, dec, divide, multiply, parseMoney, parsePercent, subtract } from "./money";
 
 export interface StreamEconomics {
   streamId: ID;
@@ -56,4 +57,21 @@ export function resolveStreamEconomics(stream: ScenarioRevenueStream): StreamEco
 /** Σ(revenue_share × stream_margin) across a scenario's active streams. */
 export function computeWeightedContributionMargin(streams: StreamEconomics[]): Dec {
   return add(...streams.map((s) => multiply(s.mixWeight, s.contributionMargin)));
+}
+
+/**
+ * An incomplete sales mix (the owner doesn't know the real split between
+ * streams) never blocks the calculation — it defaults to an equal split,
+ * clearly a placeholder (callers should tag it INCOMPLETE), rather than
+ * refusing to run. Sums to EXACTLY "1" at 8-decimal precision — the last
+ * share absorbs the remainder — so validateMixWeightsSum100 always passes
+ * on the result, never a near-miss from repeating decimals (e.g. thirds).
+ */
+export function computeEqualMixWeights(count: number): Percent[] {
+  if (count <= 0) return [];
+  if (count === 1) return ["1"];
+  const share = divide(ONE, dec(count)).toDecimalPlaces(8, Decimal.ROUND_DOWN);
+  const shares = new Array(count - 1).fill(share) as Dec[];
+  const last = subtract(ONE, add(...shares));
+  return [...shares, last].map((d) => d.toFixed(8));
 }

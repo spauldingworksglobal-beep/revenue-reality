@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Owner } from "@revenue-reality/domain";
 import {
+  resolveOwnershipSplitStatus,
   validateExactlyOnePrimaryRespondent,
   validateOwnershipPercentagesIfComplete,
   validateRestructureDateRequiredForStage,
@@ -67,6 +68,36 @@ describe("validateOwnershipPercentagesIfComplete", () => {
       owner({ id: "b", ownershipPercent: { value: "0.6", confidence: "EXACT" } }),
     ];
     expect(() => validateOwnershipPercentagesIfComplete(owners)).toThrow(ValidationError);
+  });
+});
+
+describe("resolveOwnershipSplitStatus", () => {
+  it("COMPLETE_VALID: known percentages summing to exactly 100%", () => {
+    const owners = [
+      owner({ id: "a", ownershipPercent: { value: "0.6", confidence: "EXACT" } }),
+      owner({ id: "b", ownershipPercent: { value: "0.4", confidence: "EXACT" } }),
+    ];
+    expect(resolveOwnershipSplitStatus(owners)).toBe("COMPLETE_VALID");
+  });
+
+  it("INCOMPLETE_UNKNOWN: at least one owner's percentage is unset", () => {
+    const owners = [
+      owner({ id: "a", ownershipPercent: { value: "0.6", confidence: "EXACT" } }),
+      owner({ id: "b", ownershipPercent: null }),
+    ];
+    expect(resolveOwnershipSplitStatus(owners)).toBe("INCOMPLETE_UNKNOWN");
+  });
+
+  it("COMPLETE_INVALID: every owner has a percentage, but they do not sum to 100% — distinct from unknown", () => {
+    const owners = [
+      owner({ id: "a", ownershipPercent: { value: "0.6", confidence: "EXACT" } }),
+      owner({ id: "b", ownershipPercent: { value: "0.5", confidence: "EXACT" } }),
+    ];
+    expect(resolveOwnershipSplitStatus(owners)).toBe("COMPLETE_INVALID");
+  });
+
+  it("no owners at all is treated as unknown, not invalid", () => {
+    expect(resolveOwnershipSplitStatus([])).toBe("INCOMPLETE_UNKNOWN");
   });
 });
 

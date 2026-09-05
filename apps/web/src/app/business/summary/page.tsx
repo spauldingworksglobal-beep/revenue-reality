@@ -37,7 +37,8 @@ export default function BusinessSummaryPage() {
       eyebrow="Business Profile · Summary"
       title="Here is the business as you've described it so far."
       backHref="/business/intent"
-      nextHref={undefined}
+      nextHref="/now"
+      nextLabel="Build the NOW model"
     >
       <div className="rounded-lg border border-ink/15 bg-white p-4">
         <h2 className="text-sm font-semibold">Identity</h2>

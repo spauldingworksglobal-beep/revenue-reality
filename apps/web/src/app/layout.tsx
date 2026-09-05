@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LifeRealityProvider } from "@/lib/life-store";
+import { NowProvider } from "@/lib/now-store";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,7 +12,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="bg-paper text-ink antialiased">
-        <LifeRealityProvider>{children}</LifeRealityProvider>
+        <LifeRealityProvider>
+          <NowProvider>{children}</NowProvider>
+        </LifeRealityProvider>
       </body>
     </html>
   );

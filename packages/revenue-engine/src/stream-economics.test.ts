@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ScenarioRevenueStream } from "@revenue-reality/domain";
-import { resolveStreamEconomics, computeWeightedContributionMargin } from "./stream-economics";
-import { formatMoney, formatPercent } from "./money";
+import { validateMixWeightsSum100 } from "@revenue-reality/validation";
+import { computeEqualMixWeights, resolveStreamEconomics, computeWeightedContributionMargin } from "./stream-economics";
+import { dec, formatMoney, formatPercent } from "./money";
 
 function hcfBarStream(overrides: Partial<ScenarioRevenueStream> = {}): ScenarioRevenueStream {
   return {
@@ -73,5 +74,37 @@ describe("computeWeightedContributionMargin", () => {
     // weighted = 0.6*0.6 + 0.4*0.2 = 0.36 + 0.08 = 0.44
     const weighted = computeWeightedContributionMargin([streamA, streamB]);
     expect(formatPercent(weighted)).toBe("0.44");
+  });
+});
+
+describe("computeEqualMixWeights — incomplete sales mix never blocks the calculation", () => {
+  it("a single stream gets 100%", () => {
+    expect(computeEqualMixWeights(1)).toEqual(["1"]);
+  });
+
+  it("two streams split evenly", () => {
+    const [a, b] = computeEqualMixWeights(2);
+    expect(dec(a!).plus(dec(b!)).toFixed()).toBe("1");
+    expect(a).toBe("0.50000000");
+  });
+
+  it("three streams (a repeating decimal) still sum to EXACTLY 100% — the last share absorbs the remainder", () => {
+    const shares = computeEqualMixWeights(3);
+    expect(shares).toHaveLength(3);
+    const sum = shares.reduce((s, v) => s.plus(dec(v)), dec(0));
+    expect(sum.toFixed()).toBe("1");
+  });
+
+  it("passes validateMixWeightsSum100 for an awkward count (7 streams)", () => {
+    const shares = computeEqualMixWeights(7);
+    const streams = shares.map(
+      (mixWeight, i): ScenarioRevenueStream =>
+        hcfBarStream({ streamId: `s${i}`, mixWeight }),
+    );
+    expect(() => validateMixWeightsSum100(streams)).not.toThrow();
+  });
+
+  it("zero streams returns an empty split", () => {
+    expect(computeEqualMixWeights(0)).toEqual([]);
   });
 });

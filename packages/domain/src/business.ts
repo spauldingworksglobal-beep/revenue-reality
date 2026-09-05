@@ -53,3 +53,18 @@ export interface RevenueStream {
   channel?: string;
   active: boolean;
 }
+
+export type RevenuePeriodType = "MONTH" | "YEAR" | "SINCE_RESTART" | "CUSTOM";
+
+/**
+ * Display/reporting metadata ONLY — deliberately never consumed by the
+ * engine (ScenarioEngineInput.actualRevenue stays a bare Money). Actual
+ * Revenue is a fact about its real period; the engine must never derive a
+ * run rate from it, so the period it describes can't be wired into any
+ * calculation in the first place.
+ */
+export interface ActualRevenuePeriod {
+  periodStart: ISODate | null;
+  periodEnd: ISODate | null;
+  periodType: RevenuePeriodType;
+}

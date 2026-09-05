@@ -14,3 +14,4 @@ export * from "./signals";
 export * from "./confidence";
 export * from "./collect-confidence";
 export * from "./scenario";
+export * from "./now-assembly";
