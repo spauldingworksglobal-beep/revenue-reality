@@ -107,7 +107,7 @@
       requires: 'Your life requires',
       perMonth: 'per month',
       supported: 'Already supported by other income',
-      need: 'You need to bring home',
+      need: 'Remaining take-home needed',
       sentence: 'Based on what you entered, you need to bring home <b>{x} per month</b> to cover this version of your life.',
       sentenceAfterSupport: 'Based on what you entered, you need to bring home <b>{x} per month</b> after other support to cover this version of your life.',
       sentenceEmpty: 'Select your expenses to see what this version of your life requires.',

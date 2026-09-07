@@ -37,7 +37,7 @@ writeFileSync(join(dist, 'salary-needs-script-embed.html'), scriptEmbed);
 // 2. The Tools page: original embed with the Salary Needs card linking to the new page.
 const cardRe = /<span class='v2-tool-status'>Coming soon<\/span><h3>What Salary Do I Need\?<\/h3>([\s\S]*?)<a class='v2-tool-cta' href='\/contact'>Start a conversation <span class='v2-arrow' aria-hidden='true'>&#8594;<\/span><\/a>/;
 if (!cardRe.test(tools)) throw new Error('Salary card not found in tools embed');
-const toolsEmbed = tools.replace(cardRe, `<span class='v2-tool-status is-dev'>Try it now</span><h3>Salary Needs</h3>$1<a class='v2-tool-cta' href='${site.salaryNeedsPath}'>Open the calculator <span class='v2-arrow' aria-hidden='true'>&#8594;</span></a>`) + '\n';
+const toolsEmbed = tools.replace(cardRe, `<span class='v2-tool-status is-dev'>Try it now</span><h3>Salary Needs</h3><p>${site.salaryNeedsCardCopy}</p><a class='v2-tool-cta' href='${site.salaryNeedsPath}'>Open the calculator <span class='v2-arrow' aria-hidden='true'>&#8594;</span></a>`) + '\n';
 writeFileSync(join(dist, 'tools-page-embed.html'), toolsEmbed);
 
 // 3. Local previews. ?demo=1 seeds sample numbers into localStorage before the calculator boots; &spec=1 uses the spec check.
