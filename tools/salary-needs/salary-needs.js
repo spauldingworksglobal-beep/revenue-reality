@@ -47,12 +47,17 @@
       remove: 'Remove',
       subtotal: 'per month',
       empty: 'Nothing selected yet. Choose a category above to begin.',
-      savingsNote: 'Savings count toward what you want your income to support. They’re listed separately from spending in the breakdown.',
-      goalsTitle: 'One-time goals',
-      goalHelp: 'For something you’re saving toward once—a move, a down payment, a certification—enter the goal, what you already have, and how many months you want to fund the rest over. Only the monthly contribution counts, never the whole goal.',
-      goalCols: { name: 'Goal', goal: 'Goal amount', saved: 'Already saved', months: 'Months to fund', monthly: 'Per month' },
-      goalPh: 'Name this goal',
-      addGoal: 'Add a one-time goal'
+      savingsNote: 'Savings count toward what you want your income to support. They’re listed separately from spending in the breakdown.'
+    },
+
+    goals: {
+      eyebrow: '2. Save toward something once',
+      title: 'One-time goals',
+      help: 'For something you’re saving toward once—a move, a down payment, a certification—enter the total you need, what you already have, and how many months you want to fund the rest over. Only the monthly contribution counts toward your salary requirement, never the whole goal.',
+      cols: { name: 'Goal', goal: 'Total needed', saved: 'Already saved', months: 'Months to fund', monthly: 'Per month' },
+      namePh: 'Name this goal',
+      add: 'Add a goal',
+      empty: 'No one-time goals yet.'
     },
 
     /* Category list reconciled with Revenue Reality v2 (LifeCategoryKind / SecurityItemKind in packages/domain). */
@@ -83,7 +88,7 @@
     ],
 
     step2: {
-      eyebrow: '2. Account for what is already helping',
+      eyebrow: '3. Account for what is already helping',
       q: 'Is anything else regularly helping fund your life right now?',
       yes: 'Yes', no: 'No',
       cols: { type: 'Source', name: 'Name', amount: 'Amount', freq: 'Frequency' },
@@ -204,21 +209,22 @@
         var an = p.value * py; sub += an;
         items.push({ id: it.id, name: name, annual: an, state: 'ok' });
       });
-      var goals = [];
-      if (def.kind === 'savings') {
-        sc.goals.forEach(function (g) {
-          hasAnyInput = true;
-          var r = goalMonthly(g);
-          var name = g.name || 'Goal';
-          if (r.state === 'blank') { missing.push({ id: g.id, label: name }); goals.push({ id: g.id, name: name, annual: null, state: 'blank' }); return; }
-          if (r.state !== 'ok') { invalid.push({ id: g.id, label: name }); goals.push({ id: g.id, name: name, annual: null, state: 'invalid' }); return; }
-          sub += r.monthly * 12;
-          goals.push({ id: g.id, name: name, annual: r.monthly * 12, monthly: r.monthly, state: 'ok' });
-        });
-      }
       A += sub;
-      cats.push({ key: k, label: def.label, kind: def.kind, annual: sub, items: items, goals: goals });
+      cats.push({ key: k, label: def.label, kind: def.kind, annual: sub, items: items });
     });
+
+    /* One-time goals: their monthly contribution is added to the requirement exactly once, whether or not Savings is selected. */
+    var goals = [], goalsAnnual = 0;
+    sc.goals.forEach(function (g) {
+      hasAnyInput = true;
+      var r = goalMonthly(g);
+      var name = g.name || 'Goal';
+      if (r.state === 'blank') { missing.push({ id: g.id, label: name }); goals.push({ id: g.id, name: name, annual: null, state: 'blank' }); return; }
+      if (r.state !== 'ok') { invalid.push({ id: g.id, label: name }); goals.push({ id: g.id, name: name, annual: null, state: 'invalid' }); return; }
+      goalsAnnual += r.monthly * 12;
+      goals.push({ id: g.id, name: name, annual: r.monthly * 12, monthly: r.monthly, state: 'ok' });
+    });
+    A += goalsAnnual;
 
     var support = [], B = 0;
     if (sc.support.answered === 'yes') {
@@ -239,7 +245,7 @@
     return {
       A: A, B: B, C: C,
       supportSurplus: B > A ? B - A : 0,
-      cats: cats, support: support, supportAnswered: sc.support.answered,
+      cats: cats, goals: goals, goalsAnnual: goalsAnnual, support: support, supportAnswered: sc.support.answered,
       missing: missing, invalid: invalid, incomplete: missing.length > 0, hasAnyInput: hasAnyInput,
       hours: { perWeek: HOURS_PER_WEEK, weeks: WEEKS_PER_YEAR, perYear: HOURS_PER_YEAR },
       need: views(C)
@@ -339,11 +345,11 @@
 
   function goalRow(g) {
     return '<div class="sn-goal" data-row="' + g.id + '">' +
-      '<div class="sn-cell sn-cell-name"><label class="sn-cell-label" for="sn-' + g.id + '-name">' + h(T.step1.goalCols.name) + '</label><input class="sn-input" id="sn-' + g.id + '-name" type="text" autocomplete="off" placeholder="' + h(T.step1.goalPh) + '" value="' + h(g.name) + '" data-id="' + g.id + '" data-f="name"></div>' +
-      '<div class="sn-cell">' + moneyInput(g.id, 'goal', g.goal, T.step1.goalCols.goal) + errFor(g.id) + '</div>' +
-      '<div class="sn-cell">' + moneyInput(g.id, 'saved', g.saved, T.step1.goalCols.saved) + '</div>' +
-      '<div class="sn-cell sn-cell-months"><label class="sn-cell-label" for="sn-' + g.id + '-months">' + h(T.step1.goalCols.months) + '</label><input class="sn-input" id="sn-' + g.id + '-months" type="text" inputmode="numeric" autocomplete="off" placeholder="12" value="' + h(g.months) + '" data-id="' + g.id + '" data-f="months" aria-describedby="sn-err-' + g.id + '"></div>' +
-      '<div class="sn-cell sn-cell-out"><span class="sn-cell-label">' + h(T.step1.goalCols.monthly) + '</span><div class="sn-goal-out"><b data-goal-monthly="' + g.id + '">' + T.results.dash + '</b><small>' + h(T.step1.goalCols.monthly) + '</small></div></div>' +
+      '<div class="sn-cell sn-cell-name"><label class="sn-cell-label" for="sn-' + g.id + '-name">' + h(T.goals.cols.name) + '</label><input class="sn-input" id="sn-' + g.id + '-name" type="text" autocomplete="off" placeholder="' + h(T.goals.namePh) + '" value="' + h(g.name) + '" data-id="' + g.id + '" data-f="name"></div>' +
+      '<div class="sn-cell">' + moneyInput(g.id, 'goal', g.goal, T.goals.cols.goal) + errFor(g.id) + '</div>' +
+      '<div class="sn-cell">' + moneyInput(g.id, 'saved', g.saved, T.goals.cols.saved) + '</div>' +
+      '<div class="sn-cell sn-cell-months"><label class="sn-cell-label" for="sn-' + g.id + '-months">' + h(T.goals.cols.months) + '</label><input class="sn-input" id="sn-' + g.id + '-months" type="text" inputmode="numeric" autocomplete="off" placeholder="12" value="' + h(g.months) + '" data-id="' + g.id + '" data-f="months" aria-describedby="sn-err-' + g.id + '"></div>' +
+      '<div class="sn-cell sn-cell-out"><span class="sn-cell-label">' + h(T.goals.cols.monthly) + '</span><div class="sn-goal-out"><b data-goal-monthly="' + g.id + '">' + T.results.dash + '</b><small>' + h(T.goals.cols.monthly) + '</small></div></div>' +
       '<div class="sn-cell sn-cell-x"><button type="button" class="sn-x" data-act="remove-goal" data-id="' + g.id + '" aria-label="' + h(T.step1.remove + ' ' + (g.name || 'goal')) + '">&times;</button></div>' +
       '</div>';
   }
@@ -357,12 +363,6 @@
       '<div class="sn-cols" aria-hidden="true"><span>' + h(T.step1.cols.name) + '</span><span>' + h(T.step1.cols.amount) + '</span><span>' + h(T.step1.cols.freq) + '</span><span></span></div>' +
       c.items.map(function (it) { return itemRow(cat, it); }).join('') +
       '<button type="button" class="sn-link" data-act="add-item" data-cat="' + key + '">+ ' + h(T.step1.add) + '</button>';
-    if (cat.kind === 'savings') {
-      html += '<div class="sn-goals"><h5>' + h(T.step1.goalsTitle) + '</h5><p class="sn-note">' + h(T.step1.goalHelp) + '</p>' +
-        (sc.goals.length ? '<div class="sn-cols-goal" aria-hidden="true"><span>' + h(T.step1.goalCols.name) + '</span><span>' + h(T.step1.goalCols.goal) + '</span><span>' + h(T.step1.goalCols.saved) + '</span><span>' + h(T.step1.goalCols.months) + '</span><span>' + h(T.step1.goalCols.monthly) + '</span><span></span></div>' : '') +
-        sc.goals.map(goalRow).join('') +
-        '<button type="button" class="sn-link" data-act="add-goal">+ ' + h(T.step1.addGoal) + '</button></div>';
-    }
     return html + '</section>';
   }
 
@@ -390,6 +390,12 @@
       '<p class="sn-help"><b>' + h(T.step1.helper) + '</b> ' + h(T.step1.pick) + '</p>' +
       '<div class="sn-chips" role="group" aria-label="' + h(T.step1.q) + '">' + chips + '</div>' +
       (groups || '<p class="sn-empty">' + h(T.step1.empty) + '</p>') +
+      '</section>' +
+
+      '<section class="sn-step sn-goals" aria-labelledby="sn-sg"><p class="v2-eyebrow">' + h(T.goals.eyebrow) + '</p><h2 class="sn-q" id="sn-sg">' + h(T.goals.title) + '</h2>' +
+      '<p class="sn-help">' + h(T.goals.help) + '</p>' +
+      (sc.goals.length ? '<div class="sn-cols-goal" aria-hidden="true"><span>' + h(T.goals.cols.name) + '</span><span>' + h(T.goals.cols.goal) + '</span><span>' + h(T.goals.cols.saved) + '</span><span>' + h(T.goals.cols.months) + '</span><span>' + h(T.goals.cols.monthly) + '</span><span></span></div>' + sc.goals.map(goalRow).join('') : '<p class="sn-empty">' + h(T.goals.empty) + '</p>') +
+      '<div class="sn-goals-add"><button type="button" class="sn-btn" data-act="add-goal">+ ' + h(T.goals.add) + '</button></div>' +
       '</section>' +
 
       '<section class="sn-step" aria-labelledby="sn-s2"><p class="v2-eyebrow">' + h(T.step2.eyebrow) + '</p><h2 class="sn-q" id="sn-s2">' + h(T.step2.q) + '</h2>' +
@@ -437,7 +443,7 @@
   function renderResults(R) {
     var r = T.results, sc = active();
     var sentence;
-    if (!R.hasAnyInput && !R.cats.length) sentence = h(r.sentenceEmpty);
+    if (!R.hasAnyInput && !R.cats.length && !R.goals.length) sentence = h(r.sentenceEmpty);
     else if (R.supportSurplus > 0.005) sentence = h(fill(r.supportExceeds, { x: fmtMoney(R.supportSurplus / 12) }));
     else if (R.B > 0.005) sentence = fill(r.sentenceAfterSupport, { x: fmtMoney(R.C / 12) });
     else sentence = fill(r.sentence, { x: fmtMoney(R.C / 12) });
@@ -450,8 +456,8 @@
       return '<li><span>' + h(c.label) + '</span><span>' + fmtMoney(c.annual / 12) + '</span></li>' +
         c.items.map(function (it) { return '<li class="is-sub"><span>' + h(it.name) + '</span><span>' + money(it.annual) + '</span></li>'; }).join('');
     }).join('') : none) + '</ul></div>';
-    var savingsItems = [], goalItems = [];
-    savings.forEach(function (c) { savingsItems = savingsItems.concat(c.items); goalItems = goalItems.concat(c.goals); });
+    var savingsItems = [], goalItems = R.goals;
+    savings.forEach(function (c) { savingsItems = savingsItems.concat(c.items); });
     bd += '<div><h5>' + h(r.savings) + '</h5><ul>' + (savingsItems.length ? savingsItems.map(function (it) { return '<li><span>' + h(it.name) + '</span><span>' + money(it.annual) + '</span></li>'; }).join('') : none) + '</ul></div>';
     if (goalItems.length) bd += '<div><h5>' + h(r.goals) + '</h5><ul>' + goalItems.map(function (g) { return '<li><span>' + h(g.name) + '</span><span>' + (g.annual === null ? h(r.dash) : fmtMoney(g.monthly)) + '</span></li>'; }).join('') + '</ul></div>';
     bd += '<ul><li class="is-total"><span>' + h(r.total) + '</span><span>' + fmtMoney(R.A / 12) + ' ' + h(r.monthly) + '</span></li></ul>';
@@ -492,7 +498,8 @@
       var el = els.root.querySelector('[data-cat-total="' + c.key + '"]');
       if (el) el.textContent = fmtMoney(c.annual / 12);
       c.items.forEach(function (it) { showErr(it.id, it.state === 'ok' ? '' : show(it.id) ? (it.state === 'blank' ? v.missing : v.invalid) : ''); });
-      c.goals.forEach(function (g) {
+    });
+    R.goals.forEach(function (g) {
         var out = els.root.querySelector('[data-goal-monthly="' + g.id + '"]');
         if (out) out.textContent = g.annual === null ? T.results.dash : fmtMoney(g.monthly);
         var raw = null;
@@ -503,7 +510,6 @@
           msg = mo.state === 'invalid' ? v.months : g.state === 'blank' ? v.missing : v.invalid;
         }
         showErr(g.id, msg);
-      });
     });
     R.support.forEach(function (s) { showErr(s.id, s.state === 'ok' ? '' : show(s.id) ? (s.state === 'blank' ? v.missing : v.invalid) : ''); });
     showErr('scn-name', (ui.submitted || ui.touched['name-' + sc.id]) && !(sc.name && sc.name.trim()) ? v.scenarioName : '');

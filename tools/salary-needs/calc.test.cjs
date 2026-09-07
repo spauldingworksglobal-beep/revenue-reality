@@ -63,10 +63,20 @@ test('other income is subtracted once; when it exceeds needs, required is 0 and 
   close(SN.calc(unanswered).C, 12000);
 });
 
-test('one-time goal counts only its monthly contribution, never the whole goal', () => {
+test('one-time goal counts only its monthly contribution, once, with or without the Savings category', () => {
   const s = withItems(sc(), 'savings', [{ amount: '200' }]);
   s.goals = [{ id: 'g', name: 'Move', goal: '12,000', saved: '3,000', months: '18' }];
-  close(SN.calc(s).A, 200 * 12 + (9000 / 18) * 12);
+  let R = SN.calc(s);
+  close(R.A, 200 * 12 + (9000 / 18) * 12);
+  close(R.goalsAnnual, 6000); close(R.goals[0].monthly, 500);
+  close(R.cats[0].annual, 2400); // category subtotal excludes the goal
+  const noSavings = withItems(sc(), 'housing', [{ amount: '1000' }]);
+  noSavings.goals = [{ id: 'g', name: 'Move', goal: '12,000', saved: '3,000', months: '18' }];
+  R = SN.calc(noSavings);
+  close(R.A, 12000 + 6000);
+  const goalsOnly = sc();
+  goalsOnly.goals = [{ id: 'g', name: 'Move', goal: '6,000', saved: '', months: '12' }];
+  close(SN.calc(goalsOnly).A, 6000); assert.equal(SN.calc(goalsOnly).hasAnyInput, true);
   const incompleteGoal = withItems(sc(), 'savings', []);
   incompleteGoal.goals = [{ id: 'g', name: '', goal: '5000', saved: '', months: '' }];
   assert.equal(SN.calc(incompleteGoal).incomplete, true);
