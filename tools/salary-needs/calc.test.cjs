@@ -105,3 +105,119 @@ test('display rounding only: internal precision kept', () => {
   assert.equal(SN.fmtMoney(48000), '$48,000');
   assert.equal(SN.fmtMoney(R.need.hourly, 'always'), '$0.48');
 });
+
+
+/* ---- PDF export ---------------------------------------------------- */
+
+const EM = '—', RSQ = '’', TIMES = '×', DIV = '÷', MID = '·', MINUS = '−';
+
+function pdfText(bytes) { return Buffer.from(bytes).toString('latin1'); }
+function scenarioWithNumbers() {
+  const s = withItems(SN.newScenario('My life now'), 'housing', [{ name: 'Rent or mortgage', amount: '5,000' }]);
+  s.support = { answered: 'yes', sources: [{ id: 's1', type: 'partner', name: 'Partner', amount: '1000', freq: 'monthly' }] };
+  s.goals = [{ id: 'g1', name: 'Move', goal: '12,000', saved: '3,000', months: '18' }];
+  return s;
+}
+
+test('Helvetica width tables are complete and plausible', () => {
+  assert.equal(SN.HELV.length, 95);
+  assert.equal(SN.HELVB.length, 95);
+  assert.ok(SN.HELV.every((n) => n > 0 && n <= 1015));
+  assert.ok(SN.HELVB.every((n) => n > 0 && n <= 1015));
+  assert.equal(SN.HELV[0], 278);
+  assert.equal(SN.HELV['W'.charCodeAt(0) - 32], 944);
+  assert.equal(SN.HELVB['W'.charCodeAt(0) - 32], 944);
+  assert.equal(SN.HELV['i'.charCodeAt(0) - 32], 222);
+  assert.ok(SN.textWidth('MMMM', 10, false) > SN.textWidth('iiii', 10, false));
+  assert.ok(SN.textWidth('Total', 10, true) > SN.textWidth('Total', 10, false));
+});
+
+test('text is mapped to single-byte WinAnsi so PDF offsets stay correct', () => {
+  const mapped = SN.winAnsi(EM + RSQ + TIMES + DIV + MID + MINUS + '  A');
+  for (let i = 0; i < mapped.length; i++) assert.ok(mapped.charCodeAt(i) < 256, 'byte ' + i);
+  assert.equal(SN.winAnsi(MINUS + '1,000'), '-1,000');
+  assert.equal(SN.winAnsi(EM).charCodeAt(0), 151);
+  assert.equal(SN.winAnsi(RSQ).charCodeAt(0), 146);
+});
+
+test('the PDF is a structurally valid document', () => {
+  const s = scenarioWithNumbers();
+  SN.setGoalsForPdf(s.goals);
+  const bytes = SN.buildPdf(SN.calc(s), 'My life now', new Date(2026, 8, 9));
+  const text = pdfText(bytes);
+  assert.ok(bytes instanceof Uint8Array);
+  assert.ok(text.startsWith('%PDF-1.4'));
+  assert.ok(text.trimEnd().endsWith('%%EOF'));
+
+  const startxref = Number(text.slice(text.lastIndexOf('startxref') + 9, text.lastIndexOf('%%EOF')).trim());
+  assert.equal(text.slice(startxref, startxref + 4), 'xref');
+  const size = Number(/\/Size (\d+)/.exec(text)[1]);
+  const entries = text.slice(text.indexOf('\n', startxref + 5) + 1).split('\n');
+  for (let i = 1; i < size; i++) {
+    const off = Number(entries[i].slice(0, 10));
+    assert.equal(text.slice(off, off + String(i).length + 6), i + ' 0 obj', 'object ' + i);
+  }
+  const decls = [...text.matchAll(/<< \/Length (\d+) >>\nstream\n/g)];
+  assert.ok(decls.length >= 1);
+  decls.forEach((m, i) => {
+    const body = text.slice(m.index + m[0].length);
+    assert.equal(body.indexOf('\nendstream'), Number(m[1]), 'stream ' + i);
+  });
+  assert.ok(text.includes('/BaseFont /Helvetica-Bold'));
+  assert.ok(/\/Count [1-9]/.test(text));
+});
+
+test('the PDF carries the scenario, figures, goals and notes, and no controls', () => {
+  const s = scenarioWithNumbers();
+  SN.setGoalsForPdf(s.goals);
+  const text = pdfText(SN.buildPdf(SN.calc(s), 'My life now', new Date(2026, 8, 9)));
+  const has = (str) => assert.ok(text.includes('(' + str + ')'), 'missing: ' + str);
+  has('My life now');
+  has('Downloaded September 9, 2026');
+  has('SALARY NEEDS');
+  has('A TOOL BY SPAULDING WORKS');
+  has('$5,500 per month');          // 5,000 housing + 500 from the one-time goal
+  has('$4,500');                     // remaining after 1,000 of other income
+  has('$54,000');                    // annual
+  has('$25.96');                     // hourly at 2,080 hours
+  has('Rent or mortgage');
+  has('Move');
+  has('$500');
+  has('Partner');
+  has('REQUIRED TAKE-HOME, BY PERIOD');
+  has('HOW THESE NUMBERS WERE CALCULATED');
+  ['Add an expense', 'Start over', 'Download results', 'Show my results', 'Name this expense', 'Remove scenario']
+    .forEach((c) => assert.ok(!text.includes('(' + c + ')'), 'control leaked: ' + c));
+});
+
+test('an incomplete scenario is stamped, not silently rounded off', () => {
+  const s = withItems(SN.newScenario('Draft'), 'housing', [{ amount: '2,000' }, { amount: '' }]);
+  SN.setGoalsForPdf(s.goals);
+  const text = pdfText(SN.buildPdf(SN.calc(s), 'Draft', new Date(2026, 8, 9)));
+  assert.ok(text.includes('This scenario is incomplete'));
+  assert.ok(text.includes('1 selected row still needs an amount'));
+});
+
+test('filenames are slugged safely and dated', () => {
+  assert.equal(SN.slug('My life now'), 'my-life-now');
+  assert.equal(SN.slug('After the move!! (2027)'), 'after-the-move-2027');
+  assert.equal(SN.slug('   '), 'scenario');
+  assert.equal(SN.slug(EM), 'scenario');
+  assert.ok(SN.slug('A'.repeat(80)).length <= 40);
+  assert.equal(SN.isoDate(new Date(2026, 0, 5)), '2026-01-05');
+  assert.equal('salary-needs-' + SN.slug('My life now') + '-' + SN.isoDate(new Date(2026, 8, 9)) + '.pdf',
+    'salary-needs-my-life-now-2026-09-09.pdf');
+});
+
+test('long labels and many rows paginate instead of overflowing', () => {
+  const s = SN.newScenario('Long');
+  const many = [];
+  for (let i = 0; i < 40; i++) many.push({ name: 'A very long expense description number ' + i + ' that keeps going well past one line', amount: '100' });
+  withItems(s, 'housing', many);
+  SN.setGoalsForPdf(s.goals);
+  const text = pdfText(SN.buildPdf(SN.calc(s), 'Long', new Date(2026, 8, 9)));
+  const count = Number(/\/Count (\d+)/.exec(text)[1]);
+  assert.ok(count > 1, 'expected multiple pages, got ' + count);
+  assert.ok(text.includes('Page 1 of ' + count));
+  assert.ok(text.includes('Page ' + count + ' of ' + count));
+});

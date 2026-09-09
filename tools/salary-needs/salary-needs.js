@@ -130,7 +130,41 @@
       none: 'None entered',
       notAnswered: 'Not answered yet',
       monthly: 'per month',
-      dash: '—'
+      dash: '—',
+      download: 'Download results',
+      downloadNote: 'Builds a PDF on your device. Nothing you entered is sent anywhere.',
+      downloadError: 'The download didn’t start. Please try again.'
+    },
+
+    /* Wording used only inside the generated PDF. */
+    pdf: {
+      docTitle: 'Salary Needs',
+      author: 'Spaulding Works',
+      site: 'spauldingworks.global',
+      downloaded: 'Downloaded {date}',
+      untitled: 'Untitled scenario',
+      summaryHead: 'What this version of your life requires',
+      periodHead: 'Required take-home, by period',
+      expenseHead: 'Expense breakdown, per month',
+      supportHead: 'Other income and support, per month',
+      goalsHead: 'One-time goals',
+      goalLine: '{goal} total, {saved} already saved, over {months} months',
+      goalMonths: '{n} months',
+      supportTotal: 'Total other income',
+      notesHead: 'How these numbers were calculated',
+      notes: [
+        'Every figure is take-home, after tax. Nothing here is grossed up for taxes.',
+        'Recurring amounts are annualized before anything is added together: weekly × 52, every two weeks × 26, twice monthly × 24, monthly × 12, quarterly × 4, annually × 1.',
+        'Monthly is annual ÷ 12. Weekly is annual ÷ 52 calendar weeks.',
+        'Hourly assumes a {hours}-hour week for {weeks} weeks, {total} working hours a year. It shows what each working hour has to carry; it is not a client billing rate.',
+        'Savings contributions count toward what your income has to support, and are listed apart from spending.',
+        'A one-time goal contributes only its monthly amount, never the whole goal: (total needed − already saved) ÷ months to fund.',
+        'Remaining take-home needed = life requirement − other income and support, and is never shown below zero.'
+      ],
+      incompleteNote: 'This scenario is incomplete. {n} selected {rows} an amount, so every total here is a floor, not a finished number.',
+      surplusNote: 'Other income already covers the entered needs with {x} per month to spare, so nothing is required from the work being evaluated.',
+      page: 'Page {n} of {total}',
+      none: 'None entered'
     },
 
     validation: {
@@ -268,6 +302,339 @@
   function h(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   /* =========================================================
+     3b. PDF — a tiny, dependency-free writer.
+
+     The document is assembled from the calculator's own numbers, never from
+     a screenshot of the page, so the text stays selectable and sharp. Every
+     byte is produced here in the visitor's browser: no library is fetched
+     and nothing they entered is transmitted anywhere.
+
+     Only the 14 standard PDF fonts are used (Helvetica), so no font file has
+     to be embedded. Their advance widths are needed to wrap and right-align
+     text, and are listed below in 1/1000 em, for character codes 32-126.
+     ========================================================= */
+  var HELV = ('278,278,355,556,556,889,667,191,333,333,389,584,278,278,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,' +
+    '667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,' +
+    '556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584').split(',').map(Number);
+  var HELVB = ('278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,' +
+    '722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,' +
+    '556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584').split(',').map(Number);
+  /* Characters outside 32-126 that this tool actually prints, mapped to their
+     WinAnsi byte and width. Anything else falls back to a plain equivalent. */
+  var HIGH = {
+    '\u2014': [151, 1000, 1000], '\u2013': [150, 556, 556], '\u2019': [146, 222, 278], '\u2018': [145, 222, 278],
+    '\u201c': [147, 333, 500], '\u201d': [148, 333, 500], '\u00d7': [215, 584, 584], '\u00f7': [247, 584, 584],
+    '\u00b7': [183, 278, 278], '\u2022': [149, 350, 350], '\u00a0': [32, 278, 278]
+  };
+  var PLAIN = { '\u2212': '-', '\u2010': '-', '\u2011': '-' };
+
+  /* Text -> WinAnsi bytes, as a string whose char codes are all 0-255 so that
+     string length equals byte length when the cross-reference table is built. */
+  function winAnsi(str) {
+    var out = '';
+    for (var i = 0; i < str.length; i++) {
+      var ch = str.charAt(i), code = str.charCodeAt(i);
+      if (PLAIN[ch]) { out += PLAIN[ch]; continue; }
+      if (HIGH[ch]) { out += String.fromCharCode(HIGH[ch][0]); continue; }
+      out += code < 256 ? ch : '?';
+    }
+    return out;
+  }
+  function charWidth(ch, bold) {
+    var code = ch.charCodeAt(0);
+    if (PLAIN[ch]) { code = PLAIN[ch].charCodeAt(0); }
+    if (HIGH[ch]) return HIGH[ch][bold ? 2 : 1];
+    if (code >= 32 && code <= 126) return (bold ? HELVB : HELV)[code - 32];
+    return bold ? HELVB[31] : HELV[31];
+  }
+  function textWidth(str, size, bold) {
+    var w = 0;
+    for (var i = 0; i < str.length; i++) w += charWidth(str.charAt(i), bold);
+    return w * size / 1000;
+  }
+  function pdfEscape(str) { return winAnsi(str).replace(/[\\()]/g, '\\$&').replace(/\r/g, ''); }
+  /* Document-info strings use their own encoding, so they go out as UTF-16BE hex. */
+  function pdfHexString(str) {
+    var hex = 'FEFF', t = String(str);
+    for (var i = 0; i < t.length; i++) hex += ('000' + t.charCodeAt(i).toString(16).toUpperCase()).slice(-4);
+    return '<' + hex + '>';
+  }
+
+  /* Word wrap against real glyph widths, so long labels never run off the page. */
+  function wrapText(str, size, bold, maxW) {
+    var words = String(str).split(/\s+/), lines = [], line = '';
+    for (var i = 0; i < words.length; i++) {
+      var next = line ? line + ' ' + words[i] : words[i];
+      if (line && textWidth(next, size, bold) > maxW) { lines.push(line); line = words[i]; }
+      else line = next;
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  }
+
+  var PAGE_W = 612, PAGE_H = 792, MARGIN = 54;
+  var INK = '0.067 0.067 0.067', CREAM = '0.957 0.945 0.910', YELLOW = '1 0.831 0',
+      GRAY = '0.341 0.329 0.302', RULE = '0.82 0.81 0.78', CREAM_DIM = '0.78 0.77 0.74';
+
+  function pdfPage() { return { ops: [] }; }
+
+  /* The document builder: a cursor that walks down the page, opening a new one
+     whenever the next block would not fit. */
+  function pdfBuilder() {
+    var pages = [], page = null, y = 0;
+    var api = {
+      get y() { return y; },
+      set y(v) { y = v; },
+      pages: pages,
+      newPage: function () { page = pdfPage(); pages.push(page); y = PAGE_H - MARGIN; return page; },
+      raw: function (op) { page.ops.push(op); },
+      rect: function (x, yy, w, hh, color) { page.ops.push(color + ' rg ' + x.toFixed(2) + ' ' + yy.toFixed(2) + ' ' + w.toFixed(2) + ' ' + hh.toFixed(2) + ' re f'); },
+      line: function (x1, yy1, x2, yy2, color, width) {
+        page.ops.push((color || RULE) + ' RG ' + (width || 0.7) + ' w ' + x1.toFixed(2) + ' ' + yy1.toFixed(2) + ' m ' + x2.toFixed(2) + ' ' + yy2.toFixed(2) + ' l S');
+      },
+      /* Draw one line of text. `align` may be 'right'; `track` adds letter spacing. */
+      text: function (str, x, yy, size, bold, color, align, track) {
+        var t = String(str);
+        if (!t) return;
+        var w = textWidth(t, size, bold) + (track ? track * (t.length - 1) : 0);
+        var tx = align === 'right' ? x - w : x;
+        page.ops.push('BT ' + (color || INK) + ' rg /' + (bold ? 'F2' : 'F1') + ' ' + size + ' Tf' +
+          (track ? ' ' + track + ' Tc' : '') +
+          ' 1 0 0 1 ' + tx.toFixed(2) + ' ' + yy.toFixed(2) + ' Tm (' + pdfEscape(t) + ') Tj' + (track ? ' 0 Tc' : '') + ' ET');
+        return w;
+      },
+      ensure: function (need, onNewPage) {
+        if (y - need < MARGIN + 22) { api.newPage(); if (onNewPage) onNewPage(); }
+      }
+    };
+    return api;
+  }
+
+  /* Serialize the assembled pages into PDF bytes. Offsets are counted on a
+     string of single-byte characters, so length and byte count agree. */
+  function pdfSerialize(pages, meta) {
+    var objs = [], out = '%PDF-1.4\n';
+    function add(body) { objs.push(body); return objs.length; }
+    var catalogId = add(null), pagesId = add(null), fontId = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'),
+        fontBoldId = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'),
+        infoId = add('<< /Title ' + pdfHexString(meta.title) + ' /Author ' + pdfHexString(meta.author) + ' /Creator ' + pdfHexString(meta.creator) + ' /Producer ' + pdfHexString(meta.creator) + ' /CreationDate (' + meta.date + ') >>');
+    var kids = [];
+    pages.forEach(function (p) {
+      var stream = p.ops.join('\n');
+      var streamId = add('<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream');
+      var pageId = add('<< /Type /Page /Parent ' + pagesId + ' 0 R /MediaBox [0 0 ' + PAGE_W + ' ' + PAGE_H + '] /Resources << /Font << /F1 ' + fontId + ' 0 R /F2 ' + fontBoldId + ' 0 R >> >> /Contents ' + streamId + ' 0 R >>');
+      kids.push(pageId + ' 0 R');
+    });
+    objs[catalogId - 1] = '<< /Type /Catalog /Pages ' + pagesId + ' 0 R >>';
+    objs[pagesId - 1] = '<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + pages.length + ' >>';
+
+    var offsets = [];
+    objs.forEach(function (body, i) {
+      offsets.push(out.length);
+      out += (i + 1) + ' 0 obj\n' + body + '\nendobj\n';
+    });
+    var xref = out.length;
+    out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
+    offsets.forEach(function (off) {
+      out += ('0000000000' + off).slice(-10) + ' 00000 n \n';
+    });
+    out += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root ' + catalogId + ' 0 R /Info ' + infoId + ' 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+
+    var bytes = new Uint8Array(out.length);
+    for (var i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 0xff;
+    return bytes;
+  }
+
+  function pdfDateStamp(d) {
+    function p(n) { return ('0' + n).slice(-2); }
+    return 'D:' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+  function longDate(d) {
+    var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+  }
+  function isoDate(d) {
+    function p(n) { return ('0' + n).slice(-2); }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  function slug(str) {
+    var out = String(str).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+    return out || 'scenario';
+  }
+
+  /* Lay the results out as a document. R is a calc() result. */
+  function buildPdf(R, scenarioName, now) {
+    var P = T.pdf, r = T.results;
+    var L = MARGIN, RGT = PAGE_W - MARGIN, COL = RGT - L;
+    var b = pdfBuilder();
+    var name = scenarioName || P.untitled;
+
+    function continuedHeader() {
+      b.rect(0, PAGE_H - 46, PAGE_W, 46, INK);
+      b.text(P.docTitle.toUpperCase(), L, PAGE_H - 29, 11, true, CREAM, null, 1.1);
+      b.text(name, RGT, PAGE_H - 29, 9, false, CREAM_DIM, 'right');
+      b.y = PAGE_H - 46 - 30;
+    }
+    function sectionHead(label) {
+      b.ensure(46, continuedHeader);
+      b.y -= 10;
+      b.text(label.toUpperCase(), L, b.y, 8, true, GRAY, null, 0.9);
+      b.y -= 8;
+      b.line(L, b.y, RGT, b.y, INK, 1.2);
+      b.y -= 16;
+    }
+    /* label left, value right; `indent` steps the label in for sub-rows. */
+    function row(label, value, opts) {
+      opts = opts || {};
+      var size = opts.size || 10, bold = !!opts.bold, indent = opts.indent || 0;
+      var color = opts.color || (opts.muted ? GRAY : INK);
+      var valW = value ? textWidth(String(value), size, bold) : 0;
+      var lines = wrapText(label, size, bold, COL - indent - valW - 18);
+      b.ensure(lines.length * (size + 4) + 6, continuedHeader);
+      for (var i = 0; i < lines.length; i++) {
+        b.text(lines[i], L + indent, b.y, size, bold, color);
+        if (i === 0 && value) b.text(value, RGT, b.y, size, bold, opts.valueColor || color, 'right');
+        b.y -= size + 4;
+      }
+      if (opts.rule) { b.y -= 4; b.line(L, b.y, RGT, b.y, RULE, 0.7); b.y -= 8; }
+      else b.y -= opts.gap === undefined ? 2 : opts.gap;
+    }
+    function para(str, opts) {
+      opts = opts || {};
+      var size = opts.size || 9, indent = opts.indent || 0;
+      var lines = wrapText(str, size, false, COL - indent);
+      b.ensure(lines.length * (size + 3.5) + 4, continuedHeader);
+      for (var i = 0; i < lines.length; i++) {
+        b.text(lines[i], L + indent, b.y, size, false, opts.color || GRAY);
+        b.y -= size + 3.5;
+      }
+      b.y -= opts.gap === undefined ? 6 : opts.gap;
+    }
+    function money(v) { return v === null || v === undefined ? r.dash : fmtMoney(v); }
+    function monthly(annual) { return annual === null ? r.dash : fmtMoney(annual / 12); }
+
+    /* ---- cover band ---- */
+    b.newPage();
+    var bandH = 150;
+    b.rect(0, PAGE_H - bandH, PAGE_W, bandH, INK);
+    b.rect(L, PAGE_H - bandH + 26, 46, 4, YELLOW);
+    b.text(T.attribution.toUpperCase(), L, PAGE_H - 46, 8, true, YELLOW, null, 1.4);
+    b.text(P.docTitle.toUpperCase(), L, PAGE_H - 86, 30, true, CREAM, null, 0.6);
+    b.text(name, L, PAGE_H - 108, 12, false, CREAM);
+    b.text(fill(P.downloaded, { date: longDate(now) }), RGT, PAGE_H - 108, 9, false, CREAM_DIM, 'right');
+    b.y = PAGE_H - bandH - 34;
+
+    if (R.incomplete) {
+      b.rect(L, b.y - 4, COL, 22, '0.99 0.95 0.72');
+      b.text(fill(P.incompleteNote, { n: R.missing.length, rows: R.missing.length === 1 ? 'row still needs' : 'rows still need' }), L + 10, b.y + 4, 8.5, true, INK);
+      b.y -= 34;
+    }
+
+    /* ---- headline ---- */
+    sectionHead(P.summaryHead);
+    row(r.requires, money(R.A / 12) + ' ' + r.perMonth, { size: 11 });
+    row(r.supported, (R.supportAnswered === 'yes' ? '\u2212' : '') + money(R.B / 12) + ' ' + r.perMonth, { size: 11, rule: true });
+    b.ensure(52, continuedHeader);
+    b.text(r.need.toUpperCase(), L, b.y, 9, true, GRAY, null, 0.9);
+    b.y -= 30;
+    b.text(fmtMoney(R.C / 12), L, b.y, 28, true, INK);
+    b.text(r.perMonth, L + textWidth(fmtMoney(R.C / 12), 28, true) + 8, b.y + 2, 10, false, GRAY);
+    b.y -= 10;
+    b.rect(L, b.y, Math.min(COL, textWidth(fmtMoney(R.C / 12), 28, true) + 8), 4, YELLOW);
+    b.y -= 22;
+    if (R.supportSurplus > 0.005) para(fill(P.surplusNote, { x: fmtMoney(R.supportSurplus / 12) }));
+
+    /* ---- period table ---- */
+    sectionHead(P.periodHead);
+    ['annual', 'monthly', 'weekly', 'hourly'].forEach(function (k, i) {
+      row(r.cols[k], fmtMoney(R.need[k], k === 'hourly' ? 'always' : undefined), { size: 10, rule: i < 3, bold: k === 'monthly' });
+    });
+
+    /* ---- expenses ---- */
+    sectionHead(P.expenseHead);
+    var spending = R.cats.filter(function (c) { return c.kind === 'spending'; });
+    var savings = R.cats.filter(function (c) { return c.kind === 'savings'; });
+    if (!spending.length) row(P.none, '', { size: 10, muted: true });
+    spending.forEach(function (c) {
+      row(c.label, monthly(c.annual), { size: 10, bold: true, gap: 4 });
+      c.items.forEach(function (it) { row(it.name, monthly(it.annual), { size: 9, indent: 14, muted: true }); });
+      b.y -= 6;
+    });
+    var savingsItems = [];
+    savings.forEach(function (c) { savingsItems = savingsItems.concat(c.items); });
+    if (savingsItems.length) {
+      row(r.savings, '', { size: 10, bold: true, gap: 4 });
+      savingsItems.forEach(function (it) { row(it.name, monthly(it.annual), { size: 9, indent: 14, muted: true }); });
+      b.y -= 6;
+    }
+    if (R.goals.length) {
+      row(P.goalsHead, '', { size: 10, bold: true, gap: 4 });
+      R.goals.forEach(function (g) {
+        b.ensure(40, continuedHeader);
+        row(g.name, g.annual === null ? r.dash : fmtMoney(g.monthly), { size: 9, indent: 14 });
+        var raw = null;
+        (activeScenarioGoals || []).forEach(function (x) { if (x.id === g.id) raw = x; });
+        if (raw) {
+          var detail = fill(P.goalLine, {
+            goal: raw.goal ? fmtMoney(parseAmount(raw.goal).value) : r.dash,
+            saved: raw.saved && parseAmount(raw.saved).state === 'ok' ? fmtMoney(parseAmount(raw.saved).value) : fmtMoney(0),
+            months: raw.months || r.dash
+          });
+          para(detail, { size: 8, indent: 14, gap: 4 });
+        }
+      });
+      b.y -= 2;
+    }
+    b.ensure(40, continuedHeader);
+    b.y -= 2;
+    b.line(L, b.y, RGT, b.y, INK, 1.2); b.y -= 14;
+    row(r.total, money(R.A / 12) + ' ' + r.perMonth, { size: 11, bold: true });
+
+    /* ---- support ---- */
+    sectionHead(P.supportHead);
+    if (R.supportAnswered === null) row(r.notAnswered, '', { size: 10, muted: true });
+    else if (!R.support.length) row(P.none, '', { size: 10, muted: true });
+    else {
+      R.support.forEach(function (srcRow) { row(srcRow.name, monthly(srcRow.annual), { size: 10 }); });
+      b.ensure(34, continuedHeader);
+      b.y -= 4; b.line(L, b.y, RGT, b.y, RULE, 0.7); b.y -= 12;
+      row(P.supportTotal, money(R.B / 12) + ' ' + r.perMonth, { size: 10, bold: true });
+    }
+
+    /* ---- notes ---- */
+    sectionHead(P.notesHead);
+    P.notes.forEach(function (note) {
+      var line = fill(note, { hours: fmtNum(R.hours.perWeek), weeks: fmtNum(R.hours.weeks), total: fmtNum(R.hours.perYear) });
+      b.ensure(20, continuedHeader);
+      b.text('\u2022', L, b.y, 9, false, GRAY);
+      para(line, { size: 9, indent: 14, gap: 4 });
+    });
+
+    /* ---- footers, once the page count is known ---- */
+    var total = b.pages.length;
+    b.pages.forEach(function (p, i) {
+      var save = b.pages[i];
+      b.raw = function (op) { save.ops.push(op); };
+      var yy = MARGIN - 18;
+      save.ops.push(RULE + ' RG 0.7 w ' + L + ' ' + (yy + 14) + ' m ' + RGT + ' ' + (yy + 14) + ' l S');
+      save.ops.push('BT ' + GRAY + ' rg /F1 8 Tf 1 0 0 1 ' + L + ' ' + yy + ' Tm (' + pdfEscape(T.attribution + ' \u00b7 ' + P.site) + ') Tj ET');
+      var pageLabel = fill(P.page, { n: i + 1, total: total });
+      save.ops.push('BT ' + GRAY + ' rg /F1 8 Tf 1 0 0 1 ' + (RGT - textWidth(pageLabel, 8, false)).toFixed(2) + ' ' + yy + ' Tm (' + pdfEscape(pageLabel) + ') Tj ET');
+    });
+
+    return pdfSerialize(b.pages, {
+      title: P.docTitle + ' \u2014 ' + name,
+      author: P.author,
+      creator: P.docTitle + ', a tool by ' + P.author,
+      date: pdfDateStamp(now)
+    });
+  }
+
+  /* The goal rows as the visitor typed them, so the PDF can show the inputs
+     behind each monthly contribution. Set just before a document is built. */
+  var activeScenarioGoals = null;
+
+  /* =========================================================
      4. STATE — a list of user-named scenarios, each fully independent.
      ========================================================= */
   var STORE_KEY = 'sw-salary-needs-v2';
@@ -292,7 +659,7 @@
 
   var state, ui;
   function freshState() { var first = newScenario(TEXT.scenario.defaultName); return { scenarios: [first], active: first.id }; }
-  function freshUi() { return { touched: {}, submitted: false, addOpen: false, newName: '', confirm: null, breakdownOpen: false }; }
+  function freshUi() { return { touched: {}, submitted: false, addOpen: false, newName: '', confirm: null, breakdownOpen: false, dlError: false }; }
   state = freshState(); ui = freshUi();
 
   function active() {
@@ -442,6 +809,8 @@
 
   function renderResults(R) {
     var r = T.results, sc = active();
+    /* The download only appears once there is a real, usable result behind it. */
+    var canDownload = R.A > 0.005 && R.invalid.length === 0;
     var sentence;
     if (!R.hasAnyInput && !R.cats.length && !R.goals.length) sentence = h(r.sentenceEmpty);
     else if (R.supportSurplus > 0.005) sentence = h(fill(r.supportExceeds, { x: fmtMoney(R.supportSurplus / 12) }));
@@ -480,6 +849,7 @@
       '<div class="sn-tablewrap"><table class="sn-table"><caption>' + h(r.tableCaption) + '</caption><thead><tr><th scope="col">' + h(r.cols.period) + '</th><th scope="col">' + h(r.rowNeed) + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<p class="sn-basis">' + h(fill(r.basis, { hours: fmtNum(R.hours.perWeek), weeks: fmtNum(R.hours.weeks), total: fmtNum(R.hours.perYear) })) + '</p>' +
       '<details class="sn-details" data-details' + (ui.breakdownOpen ? ' open' : '') + '><summary>' + h(r.details) + '</summary><div class="sn-bd">' + bd + '</div></details>' +
+      (canDownload ? '<div class="sn-dl"><button type="button" class="sn-btn sn-btn-yellow" data-act="download">' + h(r.download) + '</button><p class="sn-dl-note">' + h(ui.dlError ? r.downloadError : r.downloadNote) + '</p></div>' : '') +
       '<div class="sn-results-foot"><span>' + h(T.attribution) + '</span><button type="button" class="sn-btn" data-act="confirm" data-v="reset">' + h(T.scenario.startOver) + '</button></div>' +
       (ui.confirm === 'reset' ? '<div class="sn-confirm" role="alertdialog" aria-label="' + h(T.scenario.startOver) + '"><p>' + h(T.scenario.startOverConfirm) + '</p><button type="button" class="sn-btn sn-btn-yellow" data-act="reset">' + h(T.scenario.yesClear) + '</button><button type="button" class="sn-btn" data-act="confirm" data-v="">' + h(T.scenario.cancel) + '</button></div>' : '');
   }
@@ -602,6 +972,7 @@
       case 'add-source': { var s = newSource(); sc.support.sources.push(s); renderInputs(); refresh(); focusEl('#sn-' + s.id + '-type'); break; }
       case 'remove-source': { sc.support.sources = sc.support.sources.filter(function (x) { return x.id !== id; }); renderInputs(); refresh(); focusEl('[data-act="add-source"]'); break; }
       case 'finish': { ui.submitted = true; renderScenarios(); refresh(); scrollToResults(); break; }
+      case 'download': { downloadResults(); break; }
       case 'switch': { state.active = id; ui.confirm = null; ui.addOpen = false; ui.submitted = false; renderAll(); focusEl('[data-act="switch"][data-id="' + id + '"]'); break; }
       case 'add-open': { ui.addOpen = true; ui.newName = ''; ui.confirm = null; renderScenarios(); focusEl('#sn-new-name'); break; }
       case 'add-close': { ui.addOpen = false; renderScenarios(); focusEl('[data-act="add-open"]'); break; }
@@ -630,6 +1001,32 @@
     }
   }
 
+  /* Build the active scenario as a PDF and hand it to the browser. The file is
+     assembled here and released through an object URL; it never leaves the device. */
+  function downloadResults() {
+    var sc = active(), now = new Date();
+    try {
+      activeScenarioGoals = sc.goals;
+      var bytes = buildPdf(calc(sc), (sc.name || '').trim(), now);
+      var url = root.URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'salary-needs-' + slug(sc.name) + '-' + isoDate(now) + '.pdf';
+      a.rel = 'noopener';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      root.setTimeout(function () { root.URL.revokeObjectURL(url); }, 4000);
+      if (ui.dlError) { ui.dlError = false; refresh(); }
+    } catch (err) {
+      ui.dlError = true;
+      refresh();
+    } finally {
+      activeScenarioGoals = null;
+    }
+  }
+
   function scrollToResults() {
     els.results.scrollIntoView({ behavior: 'smooth', block: 'start' });
     var t = els.results.querySelector('#sn-results-title');
@@ -654,7 +1051,7 @@
     rootEl.addEventListener('toggle', function (e) { if (e.target && e.target.hasAttribute('data-details')) ui.breakdownOpen = e.target.open; }, true);
   }
 
-  var api = { TEXT: TEXT, calc: calc, parseAmount: parseAmount, parseCount: parseCount, goalMonthly: goalMonthly, fmtMoney: fmtMoney, newScenario: newScenario, cloneScenario: cloneScenario, FREQ: FREQ, HOURS_PER_YEAR: HOURS_PER_YEAR };
+  var api = { TEXT: TEXT, calc: calc, buildPdf: buildPdf, slug: slug, isoDate: isoDate, textWidth: textWidth, winAnsi: winAnsi, HELV: HELV, HELVB: HELVB, setGoalsForPdf: function (g) { activeScenarioGoals = g; }, parseAmount: parseAmount, parseCount: parseCount, goalMonthly: goalMonthly, fmtMoney: fmtMoney, newScenario: newScenario, cloneScenario: cloneScenario, FREQ: FREQ, HOURS_PER_YEAR: HOURS_PER_YEAR };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof document !== 'undefined') {
     root.SalaryNeeds = api;
