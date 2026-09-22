@@ -16,7 +16,14 @@ const js = readFileSync(join(dir, 'salary-needs.js'), 'utf8');
 const site = JSON.parse(readFileSync(join(dir, 'site-chrome.json'), 'utf8'));
 
 const cssMin = css.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
-const { code: jsMin } = await transform(js, { minify: true, target: 'es2017', legalComments: 'none', charset: 'utf8' });
+// `template-literal: false` keeps esbuild from emitting backtick strings, which would
+// carry real newlines and split the embed across lines. A single line is far safer to
+// paste into a Webflow embed and to verify byte-for-byte afterwards.
+const { code: jsMin } = await transform(js, {
+  minify: true, target: 'es2017', legalComments: 'none', charset: 'utf8',
+  supported: { 'template-literal': false }
+});
+if (jsMin.trim().split('\n').length !== 1) throw new Error('expected single-line minified JS');
 
 const banner = (what) => `<!-- Salary Needs · ${what} · A tool by Spaulding Works. Source: tools/salary-needs in the revenue-reality repo. -->\n`;
 const calcMarkup = banner('part 1 of 2: styles + markup') + '<style>\n' + cssMin + '\n</style>\n' + html + '\n';
